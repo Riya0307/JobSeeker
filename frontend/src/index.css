@@ -5,3 +5,12 @@ body {
   min-height: 100vh;
   font-family: Inter, system-ui, Avenir, Helvetica, Arial, sans-serif;
 }
+
+button,
+input {
+  font: inherit;
+}
+
+::selection {
+  background: rgb(34 211 238 / 0.25);
+}

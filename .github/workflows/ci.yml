@@ -9,33 +9,6 @@ on:
 jobs:
   backend:
     runs-on: ubuntu-latest
-
-    services:
-      mysql:
-        image: mysql:8.0
-        env:
-          MYSQL_DATABASE: jobseeker_test
-          MYSQL_USER: jobseeker
-          MYSQL_PASSWORD: jobseeker
-          MYSQL_ROOT_PASSWORD: rootpassword
-        ports:
-          - 3306:3306
-        options: >-
-          --health-cmd="mysqladmin ping -h localhost -u root -prootpassword"
-          --health-interval=10s
-          --health-timeout=5s
-          --health-retries=10
-
-      redis:
-        image: redis:7-alpine
-        ports:
-          - 6379:6379
-        options: >-
-          --health-cmd="redis-cli ping"
-          --health-interval=10s
-          --health-timeout=5s
-          --health-retries=5
-
     env:
       DJANGO_SECRET_KEY: ci-secret-key-for-testing-only
       DJANGO_DEBUG: "False"
@@ -62,16 +35,25 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Install system dependencies
+      - name: Install and start MySQL and Redis
+        working-directory: .
         run: |
           sudo apt-get update
-          sudo apt-get install -y default-libmysqlclient-dev pkg-config
+          sudo apt-get install -y mysql-server redis-server default-libmysqlclient-dev pkg-config
+          sudo systemctl start mysql
+          sudo systemctl start redis-server
+          sudo mysql --execute="CREATE DATABASE jobseeker_test CHARACTER SET utf8mb4; CREATE USER 'jobseeker'@'localhost' IDENTIFIED BY 'jobseeker'; GRANT ALL PRIVILEGES ON jobseeker_test.* TO 'jobseeker'@'localhost'; FLUSH PRIVILEGES;"
+          mysqladmin ping --host=127.0.0.1 --user=jobseeker --password=jobseeker
+          redis-cli ping
 
       - name: Install Python dependencies
         run: pip install -r requirements/development.txt
 
       - name: Run Django checks
         run: python manage.py check
+
+      - name: Check migrations
+        run: python manage.py makemigrations --check
 
       - name: Run migrations
         run: python manage.py migrate --noinput
@@ -81,7 +63,6 @@ jobs:
 
   frontend:
     runs-on: ubuntu-latest
-
     defaults:
       run:
         working-directory: frontend

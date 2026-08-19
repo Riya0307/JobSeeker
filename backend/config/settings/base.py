@@ -1,8 +1,12 @@
+import os
 from pathlib import Path
 
-BASE_DIR = Path(__file__).resolve().parent.parent.parent
+from dotenv import load_dotenv
 
-SECRET_KEY = None  # Set in environment-specific settings
+BASE_DIR = Path(__file__).resolve().parent.parent.parent
+load_dotenv(BASE_DIR.parent / ".env")
+
+SECRET_KEY = None  # Populated by configure_from_env.
 DEBUG = False
 ALLOWED_HOSTS: list[str] = []
 
@@ -17,6 +21,7 @@ INSTALLED_APPS = [
     # Third-party
     "rest_framework",
     "rest_framework_simplejwt",
+    "rest_framework_simplejwt.token_blacklist",
     "corsheaders",
     "channels",
     # Project apps
@@ -105,6 +110,7 @@ REST_FRAMEWORK = {
     "DEFAULT_PERMISSION_CLASSES": (
         "rest_framework.permissions.IsAuthenticated",
     ),
+    "EXCEPTION_HANDLER": "config.exceptions.structured_exception_handler",
 }
 
 SIMPLE_JWT = {
@@ -153,8 +159,6 @@ LOGGING = {
 
 
 def _env_bool(name: str, default: bool = False) -> bool:
-    import os
-
     value = os.environ.get(name)
     if value is None:
         return default
@@ -163,8 +167,6 @@ def _env_bool(name: str, default: bool = False) -> bool:
 
 def configure_from_env(settings: dict) -> None:
     """Apply environment-driven configuration shared across environments."""
-    import os
-
     settings["SECRET_KEY"] = os.environ["DJANGO_SECRET_KEY"]
     settings["ALLOWED_HOSTS"] = [
         host.strip()
@@ -177,12 +179,12 @@ def configure_from_env(settings: dict) -> None:
             "NAME": os.environ["DB_NAME"],
             "USER": os.environ["DB_USER"],
             "PASSWORD": os.environ["DB_PASSWORD"],
-            "HOST": os.environ.get("DB_HOST", "localhost"),
+            "HOST": os.environ.get("DB_HOST", "127.0.0.1"),
             "PORT": os.environ.get("DB_PORT", "3306"),
         }
     )
 
-    redis_url = os.environ["REDIS_URL"]
+    redis_url = os.environ.get("REDIS_URL", "redis://127.0.0.1:6379/0")
     settings["REDIS_URL"] = redis_url
     settings["CHANNEL_LAYERS"]["default"]["CONFIG"]["hosts"] = [redis_url]
     settings["CELERY_BROKER_URL"] = redis_url

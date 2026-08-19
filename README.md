@@ -1,199 +1,193 @@
 # JobSeeker
 
-JobSeeker is a **one-sided job seeker platform** designed for individual candidates. There is no recruiter portal, company dashboard, or job-posting functionality — the entire application is built around helping job seekers manage their career search.
+JobSeeker is a one-sided platform for individual candidates. The monorepo contains a React/Vite frontend and a Django REST Framework backend, with MySQL, Redis, Celery, and Django Channels/Daphne running natively on the development machine.
 
-## Project purpose
-
-This repository provides the foundation for a production-quality portfolio project where job seekers can (in future phases):
-
-- Manage profiles and resumes
-- Discover and match with jobs
-- Track applications and interviews
-- Receive AI-assisted guidance (Gemini)
-
-**Current status:** Initial infrastructure setup only. No business features, models, or APIs beyond a health-check endpoint are implemented.
+The project is currently an infrastructure foundation. Business modules are scaffolded, but business features are not part of this phase. Gemini is configured through `GEMINI_API_KEY`; no AWS services are used.
 
 ## Technology stack
 
 | Layer | Technologies |
-|-------|-------------|
+| --- | --- |
 | Frontend | React, Vite, TypeScript, Tailwind CSS, React Router, Axios |
-| Backend | Python, Django, Django REST Framework, JWT (simplejwt) |
-| Database | MySQL |
-| Cache / messaging | Redis |
+| Backend | Python 3.12, Django, Django REST Framework, SimpleJWT |
+| Database | MySQL 8.x |
+| Cache and messaging | Redis |
 | Background jobs | Celery |
-| Real-time (prepared) | Django Channels (ASGI + Redis channel layer) |
-| AI (prepared) | Gemini API key configuration only |
-| Infrastructure | Docker, Docker Compose, Nginx (reverse proxy config) |
-| CI | GitHub Actions |
+| Real-time | Django Channels, channels-redis, Daphne |
 | Testing | pytest, pytest-django |
+| CI | GitHub Actions with directly installed MySQL and Redis services |
 
 ## Repository structure
 
-```
+```text
 JobSeeker/
-├── frontend/          # React + Vite + TypeScript SPA
-├── backend/           # Django REST API
-│   ├── config/        # Project settings, ASGI, Celery, URLs
-│   ├── apps/          # Modular Django apps (scaffolded, no models yet)
-│   ├── tests/         # pytest tests
-│   └── requirements/  # Python dependencies
-├── docker/            # Dockerfiles and Nginx config
-├── docs/              # Documentation (placeholder)
-├── .github/           # GitHub Actions workflows
-├── docker-compose.yml
-├── .env.example
-└── README.md
+|-- backend/            Django API, ASGI application, Celery, and tests
+|-- frontend/           React/Vite application
+|-- docs/               Project documentation
+|-- .github/workflows/  Continuous integration
+|-- .env.example        Local environment template
+`-- README.md
 ```
-
-### Backend modules (prepared, not implemented)
-
-- `accounts` — authentication and user management
-- `candidates` — candidate profiles
-- `resumes` — resume storage and parsing
-- `jobs` — job listings for seekers
-- `matching` — job matching engine
-- `applications` — application tracking
-- `interviews` — interview scheduling and prep
-- `ai` — Gemini-powered features
-- `notifications` — alerts and messaging
-- `analytics` — usage and search analytics
-
-### Frontend feature folders (prepared, not implemented)
-
-`auth`, `dashboard`, `jobs`, `resume`, `applications`, `interviews`, `profile`
 
 ## Prerequisites
 
-- [Docker](https://docs.docker.com/get-docker/) and Docker Compose
-- (Optional, for local non-Docker development)
-  - Python 3.12+
-  - Node.js 22+
-  - MySQL 8.0+
-  - Redis 7+
+- Python 3.12
+- Node.js and npm
+- MySQL 8.x
+- Redis (a native Windows-compatible Redis server such as Memurai is suitable)
+- Git
 
-## Environment variables
+All Python packages must be installed in `backend\.venv`; do not install project dependencies globally.
 
-Copy the example file and adjust values:
+## Environment setup
 
-```bash
-cp .env.example .env
+From the repository root:
+
+```powershell
+copy .env.example .env
 ```
 
-| Variable | Description |
-|----------|-------------|
-| `DJANGO_SECRET_KEY` | Django secret key (required) |
-| `DJANGO_DEBUG` | Enable debug mode (`True` / `False`) |
-| `DJANGO_SETTINGS_MODULE` | Settings module (default: `config.settings.development`) |
-| `DJANGO_ALLOWED_HOSTS` | Comma-separated allowed hosts |
-| `DB_NAME` | MySQL database name |
-| `DB_USER` | MySQL user |
-| `DB_PASSWORD` | MySQL password |
-| `DB_HOST` | MySQL host |
-| `DB_PORT` | MySQL port |
-| `REDIS_URL` | Redis connection URL |
-| `GEMINI_API_KEY` | Gemini API key (not used yet) |
-| `FRONTEND_URL` | Frontend origin for CORS |
-| `CORS_ALLOWED_ORIGINS` | Comma-separated CORS origins |
-| `VITE_API_BASE_URL` | API base URL for the React frontend |
+Set a unique `DJANGO_SECRET_KEY` and configure the local MySQL credentials in `.env`. The supplied local endpoints are:
 
-Never commit a real `.env` file containing secrets.
-
-## Docker setup (recommended)
-
-Start all services:
-
-```bash
-docker compose up --build
+```dotenv
+DB_HOST=127.0.0.1
+DB_PORT=3306
+DB_NAME=jobseeker
+DB_USER=root
+DB_PASSWORD=
+REDIS_URL=redis://127.0.0.1:6379/0
 ```
 
-Services:
+`FRONTEND_URL`, `CORS_ALLOWED_ORIGINS`, and `GEMINI_API_KEY` are also configured in `.env`. Never commit real secrets.
 
-| Service | Port | Description |
-|---------|------|-------------|
-| frontend | 5173 | Vite dev server |
-| backend | 8000 | Django ASGI (Daphne) |
-| mysql | 3306 | MySQL 8 |
-| redis | 6379 | Redis |
-| celery | — | Celery worker |
+## Backend setup
 
-Optional Nginx reverse proxy (profile `proxy`, port 8080):
+In PowerShell, from the repository root:
 
-```bash
-docker compose --profile proxy up --build
+```powershell
+cd backend
+python -m venv .venv
+.venv\Scripts\activate
+python -m pip install -r requirements/development.txt
 ```
 
-## Run frontend (without Docker)
+If `backend\.venv` already exists, activate and reuse it instead of recreating it.
 
-```bash
+## MySQL setup
+
+Start the installed MySQL Windows service from an elevated PowerShell prompt:
+
+```powershell
+Start-Service MySQL80
+```
+
+If the service has a different name, discover it with `Get-Service *mysql*` and use that name. Create the database from a normal terminal, entering the root password when prompted:
+
+```powershell
+mysql -u root -p -e "CREATE DATABASE IF NOT EXISTS jobseeker CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;"
+```
+
+Update `DB_USER` and `DB_PASSWORD` in `.env`, then initialize the schema:
+
+```powershell
+cd backend
+.venv\Scripts\activate
+python manage.py migrate
+```
+
+## Redis setup
+
+Start the locally installed Redis-compatible Windows service from an elevated PowerShell prompt. For Memurai:
+
+```powershell
+Start-Service Memurai
+```
+
+For a Redis service registered under the conventional name:
+
+```powershell
+Start-Service Redis
+```
+
+Confirm it is available at the configured endpoint:
+
+```powershell
+redis-cli -h 127.0.0.1 -p 6379 ping
+```
+
+The expected response is `PONG`.
+
+## Start the backend
+
+For Django's development server:
+
+```powershell
+cd backend
+.venv\Scripts\activate
+python manage.py runserver
+```
+
+For the ASGI server with Django Channels support:
+
+```powershell
+cd backend
+.venv\Scripts\activate
+daphne -b 0.0.0.0 -p 8000 config.asgi:application
+```
+
+## Start Celery
+
+Redis must be running first. Open another PowerShell terminal:
+
+```powershell
+cd backend
+.venv\Scripts\activate
+celery -A config worker -l info
+```
+
+Celery uses the same `REDIS_URL` for its broker and result backend that Channels uses for its channel layer.
+
+## Start the frontend
+
+Open another terminal from the repository root:
+
+```powershell
 cd frontend
 npm install
 npm run dev
 ```
 
-Set `VITE_API_BASE_URL=http://localhost:8000/api` in your environment or `.env` file.
+The default frontend URL is `http://localhost:5173`; the API base URL is configured with `VITE_API_BASE_URL`.
 
-## Run backend (without Docker)
+## Testing and verification
 
-```bash
+Backend:
+
+```powershell
 cd backend
-python -m venv .venv
-source .venv/bin/activate   # Windows: .venv\Scripts\activate
-pip install -r requirements/development.txt
-export $(grep -v '^#' ../.env | xargs)   # Windows: set variables manually
-python manage.py migrate
-daphne -b 0.0.0.0 -p 8000 config.asgi:application
-```
-
-## Run tests
-
-Backend (requires MySQL and Redis, or use Docker):
-
-```bash
-cd backend
-pytest
+.venv\Scripts\activate
+python -m pip check
 python manage.py check
+python manage.py makemigrations --check
+python manage.py migrate --plan
+pytest
 ```
+
+MySQL must be running for database operations and database-backed tests. Redis must be running for Celery jobs and Channels traffic, but Django's static configuration check does not open a Redis connection.
 
 Frontend:
 
-```bash
+```powershell
 cd frontend
 npm run typecheck
 npm run build
 ```
 
-## Run Celery
+## Local service architecture
 
-With Docker, the `celery` service starts automatically.
-
-Manually:
-
-```bash
-cd backend
-celery -A config worker -l info
-```
-
-Verify connectivity with the ping task:
-
-```bash
-celery -A config call config.ping
-```
-
-## How Redis is used
-
-- **Celery** — message broker and result backend
-- **Django Channels** — channel layer for future WebSocket/real-time features
-
-## Future architecture
-
-- JWT authentication endpoints (token obtain/refresh URLs are wired; registration/login not implemented)
-- Modular Django apps for each domain area
-- ASGI + Channels for notifications and live updates
-- Celery for async tasks (resume parsing, matching, email)
-- Nginx as reverse proxy on Hostinger VPS
-- Local filesystem storage for uploads (no cloud storage in this phase)
-
-## License
-
-Private portfolio project.
+- Django/DRF serves the HTTP API on port 8000.
+- Daphne serves the same Django ASGI application when Channels support is needed.
+- MySQL runs locally on `127.0.0.1:3306`.
+- Redis runs locally on `127.0.0.1:6379` and is shared by Celery and Channels.
+- Celery runs as a separate process from `backend`.
+- Vite serves the React frontend on port 5173.
