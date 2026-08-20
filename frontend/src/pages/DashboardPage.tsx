@@ -4,6 +4,8 @@ import { useAuth } from "../features/auth/AuthContext";
 const cards = [
   { title: "Profile", description: "Manage your professional information", path: "/profile", accent: "cyan" },
   { title: "Resumes", description: "Upload and manage your resumes", path: "/resumes", accent: "indigo" },
+  { title: "Find Jobs", description: "Search and filter active opportunities", path: "/jobs", accent: "cyan" },
+  { title: "Saved Jobs", description: "Return to roles on your shortlist", path: "/saved-jobs", accent: "indigo" },
 ] as const;
 
 export default function DashboardPage() {

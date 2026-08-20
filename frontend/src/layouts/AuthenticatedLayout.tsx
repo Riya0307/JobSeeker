@@ -5,6 +5,8 @@ const links = [
   ["Dashboard", "/dashboard"],
   ["Profile", "/profile"],
   ["Resumes", "/resumes"],
+  ["Jobs", "/jobs"],
+  ["Saved Jobs", "/saved-jobs"],
 ] as const;
 
 export default function AuthenticatedLayout() {
