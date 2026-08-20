@@ -19,9 +19,6 @@ export const tokenStorage = {
 
 export const apiClient = axios.create({
   baseURL: apiBaseUrl,
-  headers: {
-    "Content-Type": "application/json",
-  },
 });
 
 apiClient.interceptors.request.use((config) => {

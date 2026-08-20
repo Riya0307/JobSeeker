@@ -6,6 +6,9 @@ import DashboardPage from "./pages/DashboardPage";
 import LoginPage from "./features/auth/LoginPage";
 import ProtectedRoute from "./features/auth/ProtectedRoute";
 import RegisterPage from "./features/auth/RegisterPage";
+import AuthenticatedLayout from "./layouts/AuthenticatedLayout";
+import ProfilePage from "./features/profile/ProfilePage";
+import ResumesPage from "./features/resumes/ResumesPage";
 
 function App() {
   return (
@@ -13,7 +16,11 @@ function App() {
       <Route path="/login" element={<LoginPage />} />
       <Route path="/register" element={<RegisterPage />} />
       <Route element={<ProtectedRoute />}>
-        <Route path="/dashboard" element={<DashboardPage />} />
+        <Route element={<AuthenticatedLayout />}>
+          <Route path="/dashboard" element={<DashboardPage />} />
+          <Route path="/profile" element={<ProfilePage />} />
+          <Route path="/resumes" element={<ResumesPage />} />
+        </Route>
       </Route>
       <Route element={<MainLayout />}>
         <Route path="/" element={<HomePage />} />
