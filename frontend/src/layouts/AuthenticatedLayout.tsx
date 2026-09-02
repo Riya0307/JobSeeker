@@ -3,10 +3,11 @@ import { useAuth } from "../features/auth/AuthContext";
 
 const links = [
   ["Dashboard", "/dashboard"],
+  ["Jobs", "/jobs"],
+  ["Matching", "/matching"],
+  ["Saved Jobs", "/saved-jobs"],
   ["Profile", "/profile"],
   ["Resumes", "/resumes"],
-  ["Jobs", "/jobs"],
-  ["Saved Jobs", "/saved-jobs"],
 ] as const;
 
 export default function AuthenticatedLayout() {

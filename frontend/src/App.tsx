@@ -12,6 +12,7 @@ import ResumesPage from "./features/resumes/ResumesPage";
 import JobDetailPage from "./features/jobs/JobDetailPage";
 import JobsPage from "./features/jobs/JobsPage";
 import SavedJobsPage from "./features/jobs/SavedJobsPage";
+import MatchingJobsPage from "./features/matching/MatchingJobsPage";
 
 function App() {
   return (
@@ -26,6 +27,7 @@ function App() {
           <Route path="/jobs" element={<JobsPage />} />
           <Route path="/jobs/:id" element={<JobDetailPage />} />
           <Route path="/saved-jobs" element={<SavedJobsPage />} />
+          <Route path="/matching" element={<MatchingJobsPage />} />
         </Route>
       </Route>
       <Route element={<MainLayout />}>
