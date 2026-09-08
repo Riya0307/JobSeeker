@@ -13,6 +13,8 @@ import JobDetailPage from "./features/jobs/JobDetailPage";
 import JobsPage from "./features/jobs/JobsPage";
 import SavedJobsPage from "./features/jobs/SavedJobsPage";
 import MatchingJobsPage from "./features/matching/MatchingJobsPage";
+import ApplicationDetailPage from "./features/applications/ApplicationDetailPage";
+import ApplicationsPage from "./features/applications/ApplicationsPage";
 
 function App() {
   return (
@@ -28,6 +30,8 @@ function App() {
           <Route path="/jobs/:id" element={<JobDetailPage />} />
           <Route path="/saved-jobs" element={<SavedJobsPage />} />
           <Route path="/matching" element={<MatchingJobsPage />} />
+          <Route path="/applications" element={<ApplicationsPage />} />
+          <Route path="/applications/:id" element={<ApplicationDetailPage />} />
         </Route>
       </Route>
       <Route element={<MainLayout />}>

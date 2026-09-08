@@ -1,7 +1,9 @@
+import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { useAuth } from "../features/auth/AuthContext";
+import * as applicationsApi from "../features/applications/api";
 
-const cards = [
+const baseCards = [
   { title: "Profile", description: "Manage your professional information", path: "/profile", accent: "cyan" },
   { title: "Resumes", description: "Upload and manage your resumes", path: "/resumes", accent: "indigo" },
   { title: "Find Jobs", description: "Search and filter active opportunities", path: "/jobs", accent: "cyan" },
@@ -11,6 +13,16 @@ const cards = [
 
 export default function DashboardPage() {
   const { user } = useAuth();
+  const [applicationCount, setApplicationCount] = useState<number | null>(null);
+  useEffect(() => {
+    let active = true;
+    applicationsApi.listApplications(1, 1).then((result) => { if (active) setApplicationCount(result.count); }).catch(() => undefined);
+    return () => { active = false; };
+  }, []);
+  const cards = [
+    ...baseCards,
+    { title: "Applications", description: applicationCount === null ? "Track your submitted applications" : `${applicationCount} submitted ${applicationCount === 1 ? "application" : "applications"}`, path: "/applications", accent: "indigo" },
+  ] as const;
   return (
     <main className="mx-auto max-w-6xl px-4 py-12 sm:px-6">
       <p className="text-xs font-semibold uppercase tracking-[0.2em] text-cyan-400">Candidate workspace</p>
