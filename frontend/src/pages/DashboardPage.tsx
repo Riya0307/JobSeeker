@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { useAuth } from "../features/auth/AuthContext";
 import * as applicationsApi from "../features/applications/api";
+import * as interviewsApi from "../features/interviews/api";
 
 const baseCards = [
   { title: "Profile", description: "Manage your professional information", path: "/profile", accent: "cyan" },
@@ -14,14 +15,21 @@ const baseCards = [
 export default function DashboardPage() {
   const { user } = useAuth();
   const [applicationCount, setApplicationCount] = useState<number | null>(null);
+  const [upcomingInterviewCount, setUpcomingInterviewCount] = useState<number | null>(null);
   useEffect(() => {
     let active = true;
     applicationsApi.listApplications(1, 1).then((result) => { if (active) setApplicationCount(result.count); }).catch(() => undefined);
     return () => { active = false; };
   }, []);
+  useEffect(() => {
+    let active = true;
+    interviewsApi.listInterviews({ upcoming: true, pageSize: 1 }).then((result) => { if (active) setUpcomingInterviewCount(result.count); }).catch(() => undefined);
+    return () => { active = false; };
+  }, []);
   const cards = [
     ...baseCards,
     { title: "Applications", description: applicationCount === null ? "Track your submitted applications" : `${applicationCount} submitted ${applicationCount === 1 ? "application" : "applications"}`, path: "/applications", accent: "indigo" },
+    { title: "Interviews", description: upcomingInterviewCount === null ? "Review your interview schedule" : `${upcomingInterviewCount} upcoming ${upcomingInterviewCount === 1 ? "interview" : "interviews"}`, path: "/interviews", accent: "cyan" },
   ] as const;
   return (
     <main className="mx-auto max-w-6xl px-4 py-12 sm:px-6">

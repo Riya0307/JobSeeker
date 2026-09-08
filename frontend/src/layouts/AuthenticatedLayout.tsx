@@ -7,6 +7,7 @@ const links = [
   ["Matching", "/matching"],
   ["Saved Jobs", "/saved-jobs"],
   ["Applications", "/applications"],
+  ["Interviews", "/interviews"],
   ["Profile", "/profile"],
   ["Resumes", "/resumes"],
 ] as const;
