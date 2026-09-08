@@ -62,9 +62,10 @@ def create_job(index=1, **overrides):
 
 
 @pytest.mark.django_db
-def test_job_listing_returns_only_active_jobs(client):
+def test_job_listing_returns_only_available_jobs(client):
     active = create_job(1)
     create_job(2, is_active=False)
+    create_job(3, expires_at=timezone.now() - timedelta(seconds=1))
     response = client.get("/api/jobs/")
     assert response.status_code == 200
     assert response.data["count"] == 1
@@ -72,11 +73,13 @@ def test_job_listing_returns_only_active_jobs(client):
 
 
 @pytest.mark.django_db
-def test_job_detail_and_invalid_or_inactive_job_id(client):
+def test_job_detail_and_invalid_or_unavailable_job_id(client):
     job = create_job()
     inactive = create_job(2, is_active=False)
+    expired = create_job(3, expires_at=timezone.now() - timedelta(seconds=1))
     assert client.get(f"/api/jobs/{job.id}/").status_code == 200
     assert client.get(f"/api/jobs/{inactive.id}/").status_code == 404
+    assert client.get(f"/api/jobs/{expired.id}/").status_code == 404
     assert client.get("/api/jobs/999999/").status_code == 404
 
 
@@ -198,3 +201,9 @@ def test_saved_job_listing_is_isolated_by_candidate(client, user, other_user):
 def test_save_and_unsave_invalid_job_id(client):
     assert client.post("/api/jobs/999999/save/").status_code == 404
     assert client.delete("/api/jobs/999999/save/").status_code == 404
+
+
+@pytest.mark.django_db
+def test_expired_job_cannot_be_saved(client):
+    expired = create_job(expires_at=timezone.now() - timedelta(seconds=1))
+    assert client.post(f"/api/jobs/{expired.id}/save/").status_code == 404

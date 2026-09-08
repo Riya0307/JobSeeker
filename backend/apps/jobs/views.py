@@ -1,6 +1,7 @@
 from django.db import IntegrityError
 from django.db.models import Exists, OuterRef, Q
 from django.shortcuts import get_object_or_404
+from django.utils import timezone
 from rest_framework import status
 from rest_framework.exceptions import ValidationError
 from rest_framework.generics import ListAPIView, RetrieveAPIView
@@ -39,7 +40,11 @@ class JobQuerysetMixin:
             "id", flat=True
         ).first()
         saved = SavedJob.objects.filter(job=OuterRef("pk"), candidate_id=candidate_id)
-        return Job.objects.filter(is_active=True).annotate(is_saved_for_candidate=Exists(saved))
+        return (
+            Job.objects.filter(is_active=True)
+            .filter(Q(expires_at__isnull=True) | Q(expires_at__gt=timezone.now()))
+            .annotate(is_saved_for_candidate=Exists(saved))
+        )
 
 
 class JobListView(JobQuerysetMixin, ListAPIView):
@@ -117,7 +122,12 @@ class SavedJobListView(JobQuerysetMixin, ListAPIView):
 
 class SaveJobView(APIView):
     def post(self, request, pk):
-        job = get_object_or_404(Job, pk=pk, is_active=True)
+        job = get_object_or_404(
+            Job.objects.filter(is_active=True).filter(
+                Q(expires_at__isnull=True) | Q(expires_at__gt=timezone.now())
+            ),
+            pk=pk,
+        )
         candidate, _ = CandidateProfile.objects.get_or_create(user=request.user)
         try:
             _, created = SavedJob.objects.get_or_create(candidate=candidate, job=job)
