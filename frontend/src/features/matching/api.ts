@@ -1,9 +1,9 @@
 import apiClient from "../../api/client";
 import type { JobMatch, PaginatedJobMatches } from "./types";
 
-export async function listJobMatches(page: number): Promise<PaginatedJobMatches> {
+export async function listJobMatches(page: number, pageSize?: number): Promise<PaginatedJobMatches> {
   const response = await apiClient.get<PaginatedJobMatches>("/matching/jobs/", {
-    params: { page },
+    params: { page, page_size: pageSize },
   });
   return response.data;
 }

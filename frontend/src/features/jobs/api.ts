@@ -11,8 +11,8 @@ export async function getJob(id: number): Promise<Job> {
   return response.data;
 }
 
-export async function listSavedJobs(page: number): Promise<PaginatedJobs> {
-  const response = await apiClient.get<PaginatedJobs>("/jobs/saved/", { params: { page } });
+export async function listSavedJobs(page: number, pageSize?: number): Promise<PaginatedJobs> {
+  const response = await apiClient.get<PaginatedJobs>("/jobs/saved/", { params: { page, page_size: pageSize } });
   return response.data;
 }
 
