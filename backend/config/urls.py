@@ -10,5 +10,6 @@ urlpatterns = [
     path("api/matching/", include("apps.matching.urls")),
     path("api/applications/", include("apps.applications.urls")),
     path("api/interviews/", include("apps.interviews.urls")),
+    path("api/notifications/", include("apps.notifications.urls")),
     path("api/health/", include("config.health_urls")),
 ]

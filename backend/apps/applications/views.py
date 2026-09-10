@@ -7,6 +7,9 @@ from rest_framework.pagination import PageNumberPagination
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from apps.notifications.models import Notification
+from apps.notifications.services import create_application_notification
+
 from .models import Application
 from .serializers import ApplicationCreateSerializer, ApplicationReadSerializer
 
@@ -37,6 +40,9 @@ class ApplicationListCreateView(OwnedApplicationMixin, ListCreateAPIView):
         try:
             with transaction.atomic():
                 application = serializer.save()
+                create_application_notification(
+                    application, Notification.Type.APPLICATION_SUBMITTED
+                )
         except IntegrityError as exc:
             raise ValidationError(
                 {"job_id": "You have already applied to this job."}
@@ -66,4 +72,7 @@ class ApplicationWithdrawView(OwnedApplicationMixin, APIView):
         application.status = Application.Status.WITHDRAWN
         application.withdrawn_at = timezone.now()
         application.save(update_fields=("status", "withdrawn_at", "updated_at"))
+        create_application_notification(
+            application, Notification.Type.APPLICATION_WITHDRAWN
+        )
         return Response(ApplicationReadSerializer(application, context={"request": request}).data)

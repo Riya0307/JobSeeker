@@ -7,6 +7,9 @@ from rest_framework.pagination import PageNumberPagination
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from apps.notifications.models import Notification
+from apps.notifications.services import create_interview_notification
+
 from .models import Interview
 from .serializers import InterviewReadSerializer, InterviewStatusSerializer, InterviewWriteSerializer
 
@@ -60,10 +63,12 @@ class InterviewListCreateView(OwnedInterviewMixin, ListCreateAPIView):
             queryset = queryset.filter(status=status_filter)
         return queryset
 
+    @transaction.atomic
     def create(self, request, *args, **kwargs):
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         interview = serializer.save()
+        create_interview_notification(interview, Notification.Type.INTERVIEW_SCHEDULED)
         return Response(
             InterviewReadSerializer(interview, context=self.get_serializer_context()).data,
             status=status.HTTP_201_CREATED,
@@ -102,4 +107,10 @@ class InterviewStatusView(OwnedInterviewMixin, APIView):
             interview.scheduled_at = serializer.validated_data["scheduled_at"]
             update_fields.append("scheduled_at")
         interview.save(update_fields=update_fields)
+        notification_types = {
+            Interview.Status.COMPLETED: Notification.Type.INTERVIEW_COMPLETED,
+            Interview.Status.CANCELLED: Notification.Type.INTERVIEW_CANCELLED,
+            Interview.Status.RESCHEDULED: Notification.Type.INTERVIEW_RESCHEDULED,
+        }
+        create_interview_notification(interview, notification_types[interview.status])
         return Response(InterviewReadSerializer(interview, context={"request": request}).data)
