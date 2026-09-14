@@ -1,5 +1,7 @@
 import { NavLink, Outlet, useNavigate } from "react-router-dom";
 import { useAuth } from "../features/auth/AuthContext";
+import NotificationBell from "../features/notifications/NotificationBell";
+import { NotificationProvider } from "../features/notifications/NotificationContext";
 
 const links = [
   ["Dashboard", "/dashboard"],
@@ -22,7 +24,8 @@ export default function AuthenticatedLayout() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100">
+    <NotificationProvider>
+      <div className="min-h-screen bg-slate-950 text-slate-100">
       <header className="border-b border-white/10 bg-slate-950/90 backdrop-blur">
         <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-3 px-4 py-4 sm:px-6">
           <NavLink to="/dashboard" className="text-lg font-semibold tracking-tight">
@@ -41,12 +44,16 @@ export default function AuthenticatedLayout() {
               </NavLink>
             ))}
           </nav>
-          <button onClick={handleLogout} className="order-2 rounded-lg border border-slate-700 px-3 py-2 text-sm font-medium text-slate-300 transition hover:border-slate-500 hover:text-white sm:order-3">
-            Logout
-          </button>
+          <div className="order-2 flex items-center gap-2 sm:order-3">
+            <NotificationBell />
+            <button onClick={handleLogout} className="rounded-lg border border-slate-700 px-3 py-2 text-sm font-medium text-slate-300 transition hover:border-slate-500 hover:text-white">
+              Logout
+            </button>
+          </div>
         </div>
       </header>
       <Outlet />
-    </div>
+      </div>
+    </NotificationProvider>
   );
 }
