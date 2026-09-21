@@ -15,6 +15,9 @@ export function notificationPath(notification: Notification): string | null {
   if (interviewTypes.has(notification.notification_type) && notification.interview_id) {
     return `/interviews/${notification.interview_id}`;
   }
+  if (notification.notification_type === "job_alert_match" && notification.job_id) {
+    return `/jobs/${notification.job_id}`;
+  }
   return null;
 }
 

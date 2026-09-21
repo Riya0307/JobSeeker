@@ -18,6 +18,7 @@ import ApplicationsPage from "./features/applications/ApplicationsPage";
 import InterviewDetailPage from "./features/interviews/InterviewDetailPage";
 import InterviewsPage from "./features/interviews/InterviewsPage";
 import NotificationsPage from "./features/notifications/NotificationsPage";
+import JobAlertsPage from "./features/jobAlerts/JobAlertsPage";
 
 function App() {
   return (
@@ -38,6 +39,7 @@ function App() {
           <Route path="/interviews" element={<InterviewsPage />} />
           <Route path="/interviews/:id" element={<InterviewDetailPage />} />
           <Route path="/notifications" element={<NotificationsPage />} />
+          <Route path="/job-alerts" element={<JobAlertsPage />} />
         </Route>
       </Route>
       <Route element={<MainLayout />}>

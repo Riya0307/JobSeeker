@@ -4,7 +4,8 @@ export type KnownNotificationType =
   | "interview_scheduled"
   | "interview_rescheduled"
   | "interview_cancelled"
-  | "interview_completed";
+  | "interview_completed"
+  | "job_alert_match";
 
 export interface Notification {
   id: number;
@@ -15,6 +16,7 @@ export interface Notification {
   created_at: string;
   application_id: number | null;
   interview_id: number | null;
+  job_id: number | null;
 }
 
 export interface PaginatedNotifications {
