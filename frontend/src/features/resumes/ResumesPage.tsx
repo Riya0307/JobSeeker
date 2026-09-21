@@ -41,6 +41,7 @@ export default function ResumesPage() {
   const [primaryBusy, setPrimaryBusy] = useState<number | null>(null);
 
   const load = useCallback(async () => {
+    setLoading(true);
     try { setResumes(await resumesApi.listResumes()); setError(""); }
     catch (reason) { setError(getApiError(reason)); }
     finally { setLoading(false); }
@@ -106,7 +107,7 @@ export default function ResumesPage() {
         <button onClick={() => { setUploadOpen(true); setUploadError(""); }} className="rounded-xl bg-cyan-400 px-5 py-3 text-sm font-semibold text-slate-950 hover:bg-cyan-300">Upload resume</button>
       </div>
       {success && <div role="status" className="mt-6 rounded-xl border border-emerald-400/20 bg-emerald-400/10 px-4 py-3 text-sm text-emerald-200">{success}</div>}
-      {error && <div role="alert" className="mt-6 rounded-xl border border-red-400/20 bg-red-400/10 px-4 py-3 text-sm text-red-200">{error}</div>}
+      {error && <div role="alert" className="mt-6 rounded-xl border border-red-400/20 bg-red-400/10 px-4 py-3 text-sm text-red-200"><p>{error}</p><button type="button" onClick={() => void load()} className="mt-3 font-semibold text-cyan-300">Try again</button></div>}
       {loading ? <p className="mt-10 text-sm text-slate-400">Loading resumes...</p> : resumes.length === 0 ? (
         <section className="mt-8 rounded-2xl border border-dashed border-slate-700 px-6 py-16 text-center"><h2 className="text-lg font-semibold">No resumes yet</h2><p className="mt-2 text-sm text-slate-400">Upload your first PDF resume to get started.</p></section>
       ) : <section className="mt-8 grid gap-5 md:grid-cols-2">{resumes.map((resume) => (

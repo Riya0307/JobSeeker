@@ -22,7 +22,7 @@ export function calculateProfileCompletion(
     ["current company", Boolean(profile.current_company.trim())],
     // Zero is a valid value for an entry-level candidate, not missing data.
     ["experience", Number.isFinite(profile.years_of_experience) && profile.years_of_experience >= 0],
-    ["skills", profile.skills.length > 0],
+    ["skills", profile.skills.some((skill) => skill.trim().length > 0)],
     ["resume", resumeCount > 0],
   ];
   const complete = checks.filter(([, present]) => present).length;
