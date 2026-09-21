@@ -269,6 +269,75 @@ def test_matching_job_creates_owned_contextual_notification_once(user):
 
 
 @pytest.mark.django_db
+def test_authenticated_alert_to_notification_api_integration(client, user):
+    alert_response = client.post(
+        "/api/job-alerts/",
+        {
+            "name": "Remote Python roles",
+            "keywords": "Python",
+            "work_mode": "remote",
+        },
+        format="json",
+    )
+    assert alert_response.status_code == 201
+
+    job = create_job()
+    alert_id = alert_response.data["id"]
+    notification = Notification.objects.get(
+        event_key=f"job_alert:{alert_id}:job:{job.id}"
+    )
+    assert notification.candidate == user.candidate_profile
+    assert notification.notification_type == Notification.Type.JOB_ALERT_MATCH
+    assert notification.job == job
+
+    notification_response = client.get("/api/notifications/")
+    assert notification_response.status_code == 200
+    assert notification_response.data["count"] == 1
+    assert notification_response.data["results"][0]["job_id"] == job.id
+    assert notification_response.data["results"][0]["notification_type"] == "job_alert_match"
+
+
+@pytest.mark.django_db
+def test_same_alert_creates_separate_notifications_for_different_jobs(user):
+    alert = create_alert(user)
+    first_job = create_job()
+    second_job = create_job(source_job_id=uuid4().hex, title="Python API Developer")
+
+    notifications = Notification.objects.filter(
+        candidate=user.candidate_profile,
+        notification_type=Notification.Type.JOB_ALERT_MATCH,
+    )
+    assert notifications.count() == 2
+    assert set(notifications.values_list("event_key", flat=True)) == {
+        f"job_alert:{alert.id}:job:{first_job.id}",
+        f"job_alert:{alert.id}:job:{second_job.id}",
+    }
+
+
+@pytest.mark.django_db
+def test_inactive_alert_and_candidate_notifications_remain_isolated(
+    client, user, other_user
+):
+    inactive = create_alert(user, is_active=False)
+    other_alert = create_alert(other_user)
+    job = create_job()
+
+    assert not Notification.objects.filter(
+        event_key=f"job_alert:{inactive.id}:job:{job.id}"
+    ).exists()
+    other_notification = Notification.objects.get(
+        event_key=f"job_alert:{other_alert.id}:job:{job.id}"
+    )
+    assert other_notification.candidate == other_user.candidate_profile
+
+    listing = client.get("/api/notifications/")
+    assert listing.status_code == 200
+    assert listing.data["count"] == 0
+    assert client.get(f"/api/notifications/{other_notification.id}/").status_code == 404
+    assert client.post(f"/api/notifications/{other_notification.id}/read/").status_code == 404
+
+
+@pytest.mark.django_db
 def test_same_job_matching_two_alerts_creates_two_notifications(user):
     first = create_alert(user, name="Python", keywords="Python")
     second = create_alert(user, name="Django", keywords="Django")
