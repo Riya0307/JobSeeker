@@ -13,6 +13,7 @@ class Notification(models.Model):
         INTERVIEW_RESCHEDULED = "interview_rescheduled", "Interview rescheduled"
         INTERVIEW_CANCELLED = "interview_cancelled", "Interview cancelled"
         INTERVIEW_COMPLETED = "interview_completed", "Interview completed"
+        JOB_ALERT_MATCH = "job_alert_match", "Job alert match"
 
     candidate = models.ForeignKey(
         CandidateProfile,
@@ -37,6 +38,13 @@ class Notification(models.Model):
         null=True,
         blank=True,
     )
+    job = models.ForeignKey(
+        "jobs.Job",
+        on_delete=models.SET_NULL,
+        related_name="alert_notifications",
+        null=True,
+        blank=True,
+    )
     event_key = models.CharField(max_length=255, unique=True, editable=False)
     created_at = models.DateTimeField(auto_now_add=True)
 
@@ -52,6 +60,7 @@ class Notification(models.Model):
                         "interview_rescheduled",
                         "interview_cancelled",
                         "interview_completed",
+                        "job_alert_match",
                     )
                 ),
                 name="notification_type_valid",

@@ -34,6 +34,7 @@ INSTALLED_APPS = [
     "apps.interviews",
     "apps.ai",
     "apps.notifications",
+    "apps.job_alerts",
     "apps.analytics",
 ]
 

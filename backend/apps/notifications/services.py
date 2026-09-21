@@ -72,3 +72,16 @@ def create_interview_notification(interview: Interview, notification_type: str):
             "message": message,
         },
     )[0]
+
+
+def create_job_alert_notification(alert, job):
+    return Notification.objects.get_or_create(
+        event_key=f"job_alert:{alert.pk}:job:{job.pk}",
+        defaults={
+            "candidate": alert.candidate,
+            "job": job,
+            "notification_type": Notification.Type.JOB_ALERT_MATCH,
+            "title": "New job match",
+            "message": f'A new {job.title} job matches your "{alert.name}" alert.',
+        },
+    )

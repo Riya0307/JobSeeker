@@ -6,6 +6,7 @@ from .models import Notification
 class NotificationSerializer(serializers.ModelSerializer):
     application_id = serializers.IntegerField(read_only=True)
     interview_id = serializers.IntegerField(read_only=True)
+    job_id = serializers.IntegerField(read_only=True)
 
     class Meta:
         model = Notification
@@ -18,5 +19,6 @@ class NotificationSerializer(serializers.ModelSerializer):
             "created_at",
             "application_id",
             "interview_id",
+            "job_id",
         )
         read_only_fields = fields
