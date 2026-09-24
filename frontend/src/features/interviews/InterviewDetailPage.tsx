@@ -32,8 +32,7 @@ export default function InterviewDetailPage() {
     if (!interview || !window.confirm(`${nextStatus === "completed" ? "Mark" : "Cancel"} this interview${nextStatus === "completed" ? " as completed" : ""}?`)) return;
     setAction(nextStatus); setError(""); setSuccess("");
     try {
-      await interviewsApi.updateInterviewStatus(interview.id, nextStatus);
-      setInterview(await interviewsApi.getInterview(interview.id));
+      setInterview(await interviewsApi.updateInterviewStatus(interview.id, nextStatus));
       setSuccess(nextStatus === "completed" ? "Interview marked as completed." : "Interview cancelled successfully.");
     } catch (reason) { setError(getApiError(reason)); }
     finally { setAction(null); }
@@ -44,11 +43,11 @@ export default function InterviewDetailPage() {
     if (!interview || !rescheduleAt) { setRescheduleError("Choose a new date and time."); return; }
     const parsed = new Date(rescheduleAt);
     if (Number.isNaN(parsed.getTime())) { setRescheduleError("Choose a valid date and time."); return; }
+    if (parsed.getTime() <= Date.now()) { setRescheduleError("Choose a future date and time."); return; }
     if (parsed.getTime() === new Date(interview.scheduled_at).getTime()) { setRescheduleError("Choose a different date or time."); return; }
     setAction("rescheduled"); setRescheduleError(""); setError(""); setSuccess("");
     try {
-      await interviewsApi.updateInterviewStatus(interview.id, "rescheduled", parsed.toISOString());
-      setInterview(await interviewsApi.getInterview(interview.id));
+      setInterview(await interviewsApi.updateInterviewStatus(interview.id, "rescheduled", parsed.toISOString()));
       setRescheduleOpen(false); setSuccess("Interview rescheduled successfully.");
     } catch (reason) { setRescheduleError(getApiError(reason)); }
     finally { setAction(null); }

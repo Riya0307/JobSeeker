@@ -46,7 +46,13 @@ def _valid_skills(value: Any) -> list[str]:
 
 
 def _score_skills(candidate_skills: Any, job_skills: Any):
-    required = _valid_skills(job_skills)
+    required = []
+    required_keys = set()
+    for skill in _valid_skills(job_skills):
+        key = normalize_skill(skill)
+        if key and key not in required_keys:
+            required.append(skill)
+            required_keys.add(key)
     candidate_normalized = {normalize_skill(skill) for skill in _valid_skills(candidate_skills)}
     candidate_normalized.discard("")
 

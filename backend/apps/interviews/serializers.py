@@ -1,3 +1,4 @@
+from django.utils import timezone
 from rest_framework import serializers
 
 from apps.applications.models import Application
@@ -74,6 +75,8 @@ class InterviewWriteSerializer(serializers.ModelSerializer):
         forbidden = self.SERVER_CONTROLLED_FIELDS.intersection(self.initial_data)
         if self.instance is not None and "application_id" in self.initial_data:
             forbidden.add("application_id")
+        if self.instance is not None and "scheduled_at" in self.initial_data:
+            forbidden.add("scheduled_at")
         if forbidden:
             raise serializers.ValidationError(
                 {field: "This field is controlled by the server." for field in forbidden}
@@ -121,4 +124,14 @@ class InterviewStatusSerializer(serializers.Serializer):
             raise serializers.ValidationError(
                 {"scheduled_at": "Scheduled time can only be supplied when rescheduling."}
             )
+        if attrs["status"] == Interview.Status.RESCHEDULED:
+            scheduled_at = attrs["scheduled_at"]
+            if scheduled_at <= timezone.now():
+                raise serializers.ValidationError(
+                    {"scheduled_at": "Choose a future date and time."}
+                )
+            if scheduled_at == interview.scheduled_at:
+                raise serializers.ValidationError(
+                    {"scheduled_at": "Choose a different date and time."}
+                )
         return attrs

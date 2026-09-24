@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import axios from "axios";
 import { Link, useSearchParams } from "react-router-dom";
 import { getApiError, inputClass } from "../auth/formUtils";
 import Pagination from "../jobs/Pagination";
@@ -9,24 +10,47 @@ import type { InterviewStatus, PaginatedInterviews } from "./types";
 type TimeFilter = "all" | "upcoming" | "past";
 const statuses: InterviewStatus[] = ["scheduled", "completed", "cancelled", "rescheduled"];
 
+function normalizedInterviewParams(params: URLSearchParams) {
+  const normalized = new URLSearchParams();
+  if (params.get("upcoming") === "true") normalized.set("upcoming", "true");
+  else if (params.get("past") === "true") normalized.set("past", "true");
+  const status = params.get("status") as InterviewStatus | null;
+  if (status && statuses.includes(status)) normalized.set("status", status);
+  const page = params.get("page")?.trim();
+  if (page && /^\d+$/.test(page) && Number(page) > 1) normalized.set("page", String(Number(page)));
+  return normalized;
+}
+
 export default function InterviewsPage() {
   const [params, setParams] = useSearchParams();
   const query = params.toString();
+  const normalizedParams = normalizedInterviewParams(new URLSearchParams(query));
+  const normalizedQuery = normalizedParams.toString();
   const [data, setData] = useState<PaginatedInterviews | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [retry, setRetry] = useState(0);
-  const page = Math.max(1, Number(params.get("page") ?? 1) || 1);
-  const timeFilter: TimeFilter = params.get("upcoming") === "true" ? "upcoming" : params.get("past") === "true" ? "past" : "all";
-  const status = statuses.includes(params.get("status") as InterviewStatus) ? params.get("status") as InterviewStatus : "";
+  const page = Number(normalizedParams.get("page") ?? 1);
+  const timeFilter: TimeFilter = normalizedParams.get("upcoming") === "true" ? "upcoming" : normalizedParams.get("past") === "true" ? "past" : "all";
+  const status = statuses.includes(normalizedParams.get("status") as InterviewStatus) ? normalizedParams.get("status") as InterviewStatus : "";
+
+  useEffect(() => {
+    if (query !== normalizedQuery) setParams(new URLSearchParams(normalizedQuery), { replace: true });
+  }, [normalizedQuery, query, setParams]);
 
   const load = useCallback(async () => {
-    const current = new URLSearchParams(query);
+    const current = new URLSearchParams(normalizedQuery);
     setLoading(true); setError("");
     try { setData(await interviewsApi.listInterviews({ page, upcoming: current.get("upcoming") === "true", past: current.get("past") === "true", status: statuses.includes(current.get("status") as InterviewStatus) ? current.get("status") as InterviewStatus : undefined })); }
-    catch (reason) { setError(getApiError(reason)); }
+    catch (reason) {
+      if (axios.isAxiosError(reason) && reason.response?.status === 404 && page > 1) {
+        const firstPage = new URLSearchParams(normalizedQuery); firstPage.delete("page");
+        setParams(firstPage, { replace: true }); return;
+      }
+      setError(getApiError(reason));
+    }
     finally { setLoading(false); }
-  }, [page, query, retry]);
+  }, [normalizedQuery, page, retry, setParams]);
   useEffect(() => { void load(); }, [load]);
 
   function setFilter(time: TimeFilter, nextStatus = status) {

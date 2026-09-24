@@ -261,12 +261,10 @@ def test_other_candidates_interview_is_hidden(client, other_user):
 @pytest.mark.django_db
 def test_permitted_patch_fields_work(client, user):
     interview = create_interview(user)
-    new_time = timezone.now() + timedelta(days=5)
     response = client.patch(
         f"/api/interviews/{interview.id}/",
         {
             "round_name": "HR Round",
-            "scheduled_at": new_time.isoformat(),
             "duration_minutes": 45,
             "mode": "in_person",
             "meeting_link": "",
@@ -282,10 +280,15 @@ def test_permitted_patch_fields_work(client, user):
 
 
 @pytest.mark.django_db
-@pytest.mark.parametrize("field", ["application_id", "candidate_id", "user_id", "status", "created_at", "updated_at"])
+@pytest.mark.parametrize("field", ["application_id", "candidate_id", "user_id", "status", "scheduled_at", "created_at", "updated_at"])
 def test_patch_rejects_reassignment_and_server_fields(client, user, field):
     interview = create_interview(user)
-    value = "completed" if field == "status" else 999999
+    if field == "status":
+        value = "completed"
+    elif field == "scheduled_at":
+        value = (timezone.now() + timedelta(days=10)).isoformat()
+    else:
+        value = 999999
     response = client.patch(
         f"/api/interviews/{interview.id}/",
         {field: value},
@@ -329,6 +332,28 @@ def test_rescheduled_transition_requires_and_updates_time(client, user):
     assert response.data["status"] == Interview.Status.RESCHEDULED
     interview.refresh_from_db()
     assert abs(interview.scheduled_at - new_time) < timedelta(seconds=1)
+
+
+@pytest.mark.django_db
+def test_reschedule_rejects_unchanged_and_past_times(client, user):
+    interview = create_interview(user)
+    unchanged = client.post(
+        f"/api/interviews/{interview.id}/status/",
+        {"status": "rescheduled", "scheduled_at": interview.scheduled_at.isoformat()},
+        format="json",
+    )
+    past = client.post(
+        f"/api/interviews/{interview.id}/status/",
+        {
+            "status": "rescheduled",
+            "scheduled_at": (timezone.now() - timedelta(minutes=1)).isoformat(),
+        },
+        format="json",
+    )
+    assert unchanged.status_code == 400
+    assert past.status_code == 400
+    interview.refresh_from_db()
+    assert interview.status == Interview.Status.SCHEDULED
 
 
 @pytest.mark.django_db

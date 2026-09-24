@@ -142,6 +142,28 @@ def test_malformed_skill_data_is_safe(candidate_user):
 
 
 @pytest.mark.django_db
+def test_duplicate_and_empty_normalized_skills_do_not_distort_coverage(candidate_user):
+    profile = candidate_user.candidate_profile
+    profile.skills = [" Python ", "PYTHON", "REST API", "", "---"]
+    result = match(
+        profile,
+        skills=["Python", " python ", "Django", "REST-API", "REST API", "---", "  "],
+    )
+    assert result.matched_skills == ["Python", "REST-API"]
+    assert result.missing_skills == ["Django"]
+    assert result.match_score == 83
+    assert "Several required skills are missing" in result.reasons
+
+
+@pytest.mark.django_db
+def test_duplicate_required_skill_cannot_reduce_a_full_match(candidate_user):
+    result = match(candidate_user.candidate_profile, skills=["Python", " python ", "PYTHON"])
+    assert result.matched_skills == ["Python"]
+    assert result.missing_skills == []
+    assert result.match_score == 100
+
+
+@pytest.mark.django_db
 @pytest.mark.parametrize(
     ("years", "minimum", "maximum", "expected_experience_points", "reason"),
     [
@@ -249,6 +271,14 @@ def test_list_orders_by_descending_score(client):
 
 
 @pytest.mark.django_db
+def test_equal_scores_use_newest_job_id_as_stable_tie_breaker(client):
+    older = create_job(title="Older")
+    newer = create_job(title="Newer")
+    response = client.get("/api/matching/jobs/")
+    assert [item["job"]["id"] for item in response.data["results"]] == [newer.id, older.id]
+
+
+@pytest.mark.django_db
 def test_matching_list_pagination(client):
     for index in range(11):
         create_job(title=f"Job {index}")
@@ -285,7 +315,16 @@ def test_missing_candidate_profile_returns_clean_error(db):
 def test_candidate_isolation_and_candidate_id_is_ignored(client, candidate_user, other_user):
     job = create_job(skills=["Python"])
     other_result = calculate_match(other_user.candidate_profile, job)
-    response = client.get("/api/matching/jobs/", {"candidate_id": other_user.id})
+    response = client.get(
+        "/api/matching/jobs/",
+        {
+            "candidate_id": other_user.id,
+            "user_id": other_user.id,
+            "profile_id": other_user.candidate_profile.id,
+            "match_score": 0,
+            "reasons": "Client supplied",
+        },
+    )
     own_result = response.data["results"][0]
     assert own_result["match_score"] == 100
     assert own_result["matched_skills"] == ["Python"]

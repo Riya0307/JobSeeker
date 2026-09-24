@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
-import { Link } from "react-router-dom";
+import axios from "axios";
+import { Link, useSearchParams } from "react-router-dom";
 import { getApiError } from "../auth/formUtils";
 import * as jobsApi from "../jobs/api";
 import JobCard from "../jobs/JobCard";
@@ -11,19 +12,32 @@ import MatchScore from "./MatchScore";
 import type { PaginatedJobMatches } from "./types";
 
 export default function MatchingJobsPage() {
-  const [page, setPage] = useState(1);
+  const [params, setParams] = useSearchParams();
+  const requestedPage = Number(params.get("page") ?? 1);
+  const page = Number.isInteger(requestedPage) && requestedPage > 0 ? requestedPage : 1;
   const [data, setData] = useState<PaginatedJobMatches | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [busyId, setBusyId] = useState<number | null>(null);
   const [requestVersion, setRequestVersion] = useState(0);
 
+  useEffect(() => {
+    if (params.has("page") && String(page) !== params.get("page")) {
+      setParams(page > 1 ? { page: String(page) } : {}, { replace: true });
+    }
+  }, [page, params, setParams]);
+
   const load = useCallback(async () => {
     setLoading(true); setError("");
     try { setData(await matchingApi.listJobMatches(page)); }
-    catch (reason) { setError(`We couldn't load your recommendations. ${getApiError(reason)}`); }
+    catch (reason) {
+      if (axios.isAxiosError(reason) && reason.response?.status === 404 && page > 1) {
+        setParams({}, { replace: true }); return;
+      }
+      setError(`We couldn't load your recommendations. ${getApiError(reason)}`);
+    }
     finally { setLoading(false); }
-  }, [page, requestVersion]);
+  }, [page, requestVersion, setParams]);
 
   useEffect(() => { void load(); }, [load]);
 
@@ -64,7 +78,7 @@ export default function MatchingJobsPage() {
                 </JobCard>
               ))}
             </div>
-            <Pagination page={page} count={data.count} onChange={(next) => { setPage(next); window.scrollTo({ top: 0, behavior: "smooth" }); }} />
+            <Pagination page={page} count={data.count} onChange={(next) => { setParams(next > 1 ? { page: String(next) } : {}); window.scrollTo({ top: 0, behavior: "smooth" }); }} />
           </>
         ) : (
           <div className="rounded-2xl border border-dashed border-slate-700 px-6 py-16 text-center"><h2 className="text-lg font-semibold">No matches yet</h2><p className="mx-auto mt-2 max-w-md text-sm text-slate-400">Complete your candidate profile and add more skills to improve your recommendations.</p><div className="mt-6 flex flex-col justify-center gap-3 sm:flex-row"><Link to="/profile" className="rounded-xl bg-cyan-400 px-5 py-3 text-sm font-semibold text-slate-950 hover:bg-cyan-300">Complete profile</Link><Link to="/jobs" className="rounded-xl border border-slate-700 px-5 py-3 text-sm font-semibold text-slate-200 hover:border-slate-500">Browse all jobs</Link></div></div>
