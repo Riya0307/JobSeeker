@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import { getApiError } from "../auth/formUtils";
 import ApplicationForm from "../applications/ApplicationForm";
@@ -29,13 +29,19 @@ export default function JobDetailPage() {
   const [applicationError, setApplicationError] = useState("");
   const [applicationRetry, setApplicationRetry] = useState(0);
   const [applicationFormOpen, setApplicationFormOpen] = useState(false);
+  const [jobRetry, setJobRetry] = useState(0);
 
-  useEffect(() => {
+  const loadJob = useCallback(async () => {
     if (!Number.isInteger(jobId) || jobId <= 0) {
       setError("This job could not be found."); setLoading(false); return;
     }
-    jobsApi.getJob(jobId).then(setJob).catch((reason) => setError(getApiError(reason))).finally(() => setLoading(false));
+    setLoading(true); setError(""); setJob(null);
+    try { setJob(await jobsApi.getJob(jobId)); }
+    catch (reason) { setError(getApiError(reason)); }
+    finally { setLoading(false); }
   }, [jobId]);
+
+  useEffect(() => { void loadJob(); }, [loadJob, jobRetry]);
 
   useEffect(() => {
     if (!Number.isInteger(jobId) || jobId <= 0) { setCheckingApplication(false); return; }
@@ -67,8 +73,8 @@ export default function JobDetailPage() {
     finally { setSaving(false); }
   }
 
-  if (loading) return <main className="mx-auto max-w-4xl px-4 py-12 text-sm text-slate-400 sm:px-6">Loading job details...</main>;
-  if (!job) return <main className="mx-auto max-w-4xl px-4 py-12 sm:px-6"><div role="alert" className="rounded-2xl border border-red-400/20 bg-red-400/10 p-6 text-red-200"><h1 className="text-xl font-semibold">Unable to load job</h1><p className="mt-2 text-sm">{error}</p></div><Link to="/jobs" className="mt-6 inline-block text-sm font-semibold text-cyan-300">← Back to jobs</Link></main>;
+  if (loading) return <main className="mx-auto max-w-4xl px-4 py-12 sm:px-6"><div className="h-9 w-2/3 animate-pulse rounded bg-white/5" /><div className="mt-6 h-80 animate-pulse rounded-2xl bg-white/5" aria-label="Loading job details" /></main>;
+  if (!job) return <main className="mx-auto max-w-4xl px-4 py-12 sm:px-6"><div role="alert" className="rounded-2xl border border-red-400/20 bg-red-400/10 p-6 text-red-200"><h1 className="text-xl font-semibold">Unable to load job</h1><p className="mt-2 text-sm">{error}</p>{Number.isInteger(jobId) && jobId > 0 && <button type="button" onClick={() => setJobRetry((value) => value + 1)} className="mt-5 rounded-lg bg-cyan-400 px-4 py-2 text-sm font-semibold text-slate-950">Try again</button>}</div><Link to="/jobs" className="mt-6 inline-block text-sm font-semibold text-cyan-300">← Back to jobs</Link></main>;
 
   const fromMatching = Boolean(location.state?.fromMatching);
   return (

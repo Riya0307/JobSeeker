@@ -1,5 +1,6 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { useSearchParams } from "react-router-dom";
+import axios from "axios";
 import { getApiError, inputClass } from "../auth/formUtils";
 import * as jobsApi from "./api";
 import JobCard from "./JobCard";
@@ -10,6 +11,31 @@ interface Filters {
   search: string; location: string; work_mode: string; employment_type: string;
   experience_min: string; experience_max: string; salary_min: string; salary_max: string;
   skills: string; ordering: string;
+}
+
+const workModes = new Set(["remote", "hybrid", "onsite"]);
+const employmentTypes = new Set(["full-time", "part-time", "contract", "internship", "temporary"]);
+const orderings = new Set(["-posted_at", "posted_at", "-salary_min", "salary_min", "title", "company_name"]);
+
+function normalizedJobParams(params: URLSearchParams) {
+  const normalized = new URLSearchParams();
+  for (const key of ["search", "location", "skills"] as const) {
+    const value = params.get(key)?.trim();
+    if (value) normalized.set(key, value);
+  }
+  const workMode = params.get("work_mode")?.trim().toLowerCase();
+  if (workMode && workModes.has(workMode)) normalized.set("work_mode", workMode);
+  const employmentType = params.get("employment_type")?.trim().toLowerCase();
+  if (employmentType && employmentTypes.has(employmentType)) normalized.set("employment_type", employmentType);
+  for (const key of ["experience_min", "experience_max", "salary_min", "salary_max"] as const) {
+    const value = params.get(key)?.trim();
+    if (value && /^\d+$/.test(value)) normalized.set(key, value);
+  }
+  const ordering = params.get("ordering")?.trim();
+  if (ordering && orderings.has(ordering) && ordering !== "-posted_at") normalized.set("ordering", ordering);
+  const page = params.get("page")?.trim();
+  if (page && /^\d+$/.test(page) && Number(page) > 1) normalized.set("page", String(Number(page)));
+  return normalized;
 }
 
 function filtersFromParams(params: URLSearchParams): Filters {
@@ -29,33 +55,64 @@ function filtersFromParams(params: URLSearchParams): Filters {
 export default function JobsPage() {
   const [params, setParams] = useSearchParams();
   const query = params.toString();
-  const [filters, setFilters] = useState(() => filtersFromParams(params));
+  const normalizedParams = normalizedJobParams(new URLSearchParams(query));
+  const normalizedQuery = normalizedParams.toString();
+  const page = Number(normalizedParams.get("page") ?? 1);
+  const [filters, setFilters] = useState(() => filtersFromParams(normalizedParams));
   const [data, setData] = useState<PaginatedJobs | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [validationError, setValidationError] = useState("");
   const [busyId, setBusyId] = useState<number | null>(null);
+  const [retry, setRetry] = useState(0);
 
-  useEffect(() => { setFilters(filtersFromParams(new URLSearchParams(query))); }, [query]);
+  useEffect(() => {
+    setFilters(filtersFromParams(new URLSearchParams(normalizedQuery)));
+    if (query !== normalizedQuery) setParams(new URLSearchParams(normalizedQuery), { replace: true });
+  }, [normalizedQuery, query, setParams]);
   useEffect(() => {
     let active = true; setLoading(true); setError("");
-    jobsApi.listJobs(new URLSearchParams(query)).then((result) => { if (active) setData(result); })
-      .catch((reason) => { if (active) setError(getApiError(reason)); })
+    jobsApi.listJobs(new URLSearchParams(normalizedQuery)).then((result) => { if (active) setData(result); })
+      .catch((reason) => {
+        if (!active) return;
+        if (axios.isAxiosError(reason) && reason.response?.status === 404 && page > 1) {
+          const firstPage = new URLSearchParams(normalizedQuery); firstPage.delete("page");
+          setParams(firstPage, { replace: true }); return;
+        }
+        setError(getApiError(reason));
+      })
       .finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
-  }, [query]);
+  }, [normalizedQuery, page, retry, setParams]);
 
-  function update(key: keyof Filters, value: string) { setFilters((current) => ({ ...current, [key]: value })); }
+  function update(key: keyof Filters, value: string) { setFilters((current) => ({ ...current, [key]: value })); setValidationError(""); }
   function submit(event: FormEvent) {
     event.preventDefault();
+    const experienceMin = filters.experience_min.trim() ? Number(filters.experience_min) : null;
+    const experienceMax = filters.experience_max.trim() ? Number(filters.experience_max) : null;
+    const salaryMin = filters.salary_min.trim() ? Number(filters.salary_min) : null;
+    const salaryMax = filters.salary_max.trim() ? Number(filters.salary_max) : null;
+    if ([experienceMin, experienceMax].some((value) => value !== null && (!Number.isInteger(value) || value < 0))) {
+      setValidationError("Experience values must be non-negative whole numbers."); return;
+    }
+    if ([salaryMin, salaryMax].some((value) => value !== null && (!Number.isFinite(value) || value < 0))) {
+      setValidationError("Salary values must be non-negative numbers."); return;
+    }
+    if (experienceMin !== null && experienceMax !== null && experienceMin > experienceMax) {
+      setValidationError("Maximum experience must be at least the minimum."); return;
+    }
+    if (salaryMin !== null && salaryMax !== null && salaryMin > salaryMax) {
+      setValidationError("Maximum salary must be at least the minimum."); return;
+    }
     const next = new URLSearchParams();
     Object.entries(filters).forEach(([key, value]) => {
       const clean = value.trim();
       if (!clean || (key === "ordering" && clean === "-posted_at")) return;
       next.set(key, key.startsWith("salary_") ? String(Number(clean) * 100_000) : clean);
     });
-    setParams(next);
+    setValidationError(""); setParams(next);
   }
-  function clearFilters() { setParams(new URLSearchParams()); }
+  function clearFilters() { setValidationError(""); setParams(new URLSearchParams()); }
   function goToPage(page: number) { const next = new URLSearchParams(params); next.set("page", String(page)); setParams(next); window.scrollTo({ top: 0, behavior: "smooth" }); }
   async function toggleSave(job: Job) {
     setBusyId(job.id); setError("");
@@ -65,7 +122,6 @@ export default function JobsPage() {
     } catch (reason) { setError(getApiError(reason)); } finally { setBusyId(null); }
   }
 
-  const page = Number(params.get("page") ?? 1);
   return (
     <main className="mx-auto max-w-6xl px-4 py-10 sm:px-6">
       <div><p className="text-xs font-semibold uppercase tracking-[0.2em] text-cyan-400">Job discovery</p><h1 className="mt-3 text-3xl font-semibold tracking-tight sm:text-4xl">Find your next opportunity</h1><p className="mt-2 text-slate-400">Search active roles and save the ones worth revisiting.</p></div>
@@ -84,7 +140,8 @@ export default function JobsPage() {
         </div>
         <div className="mt-5 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end"><button type="button" onClick={clearFilters} className="rounded-xl border border-slate-700 px-5 py-3 text-sm font-semibold text-slate-300 hover:border-slate-500">Clear filters</button><button className="rounded-xl bg-cyan-400 px-6 py-3 text-sm font-semibold text-slate-950 hover:bg-cyan-300">Search jobs</button></div>
       </form>
-      {error && <div role="alert" className="mt-6 rounded-xl border border-red-400/20 bg-red-400/10 px-4 py-3 text-sm text-red-200">{error}</div>}
+      {validationError && <div role="alert" className="mt-6 rounded-xl border border-amber-400/20 bg-amber-400/10 px-4 py-3 text-sm text-amber-100">{validationError}</div>}
+      {error && <div role="alert" className="mt-6 rounded-xl border border-red-400/20 bg-red-400/10 px-4 py-3 text-sm text-red-200"><p>{error}</p><button type="button" onClick={() => setRetry((value) => value + 1)} className="mt-3 font-semibold text-cyan-300">Try again</button></div>}
       <section className="mt-8" aria-live="polite">
         {loading ? <div className="grid gap-5"><div className="h-56 animate-pulse rounded-2xl bg-slate-900/70" /><div className="h-56 animate-pulse rounded-2xl bg-slate-900/70" /></div> : data?.results.length ? <><p className="mb-4 text-sm text-slate-400">{data.count} {data.count === 1 ? "job" : "jobs"} found</p><div className="grid gap-5">{data.results.map((job) => <JobCard key={job.id} job={job} busy={busyId === job.id} onToggleSave={(item) => void toggleSave(item)} />)}</div><Pagination page={page} count={data.count} onChange={goToPage} /></> : <div className="rounded-2xl border border-dashed border-slate-700 px-6 py-16 text-center"><h2 className="text-lg font-semibold">No jobs found</h2><p className="mt-2 text-sm text-slate-400">Try broadening your search or clearing some filters.</p><button onClick={clearFilters} className="mt-5 text-sm font-semibold text-cyan-300 hover:text-cyan-200">Clear all filters</button></div>}
       </section>

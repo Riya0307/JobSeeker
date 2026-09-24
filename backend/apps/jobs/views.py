@@ -15,6 +15,9 @@ from .models import Job, SavedJob
 from .serializers import JobSerializer
 
 
+EMPLOYMENT_TYPES = {"full-time", "part-time", "contract", "internship", "temporary"}
+
+
 class JobPagination(PageNumberPagination):
     page_size = 10
     page_size_query_param = "page_size"
@@ -67,14 +70,22 @@ class JobListView(JobQuerysetMixin, ListAPIView):
         if location := params.get("location", "").strip():
             queryset = queryset.filter(location__icontains=location)
         if work_mode := params.get("work_mode", "").strip():
+            if work_mode.casefold() not in Job.WorkMode.values:
+                raise ValidationError({"work_mode": "Select a supported work mode."})
             queryset = queryset.filter(work_mode__iexact=work_mode)
         if employment_type := params.get("employment_type", "").strip():
+            if employment_type.casefold() not in EMPLOYMENT_TYPES:
+                raise ValidationError({"employment_type": "Select a supported employment type."})
             queryset = queryset.filter(employment_type__iexact=employment_type)
 
         experience_min = _number_param(params, "experience_min")
         experience_max = _number_param(params, "experience_max")
         salary_min = _number_param(params, "salary_min")
         salary_max = _number_param(params, "salary_max")
+        if experience_min is not None and experience_max is not None and experience_min > experience_max:
+            raise ValidationError({"experience_max": "Must be at least the minimum experience."})
+        if salary_min is not None and salary_max is not None and salary_min > salary_max:
+            raise ValidationError({"salary_max": "Must be at least the minimum salary."})
         if experience_min is not None:
             queryset = queryset.filter(
                 Q(experience_max__gte=experience_min) | Q(experience_max__isnull=True)

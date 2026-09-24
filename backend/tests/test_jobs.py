@@ -146,6 +146,14 @@ def test_unsupported_ordering_and_invalid_ranges_are_rejected(client):
     create_job()
     assert client.get("/api/jobs/", {"ordering": "description"}).status_code == 400
     assert client.get("/api/jobs/", {"salary_min": "many"}).status_code == 400
+    assert client.get("/api/jobs/", {"work_mode": "virtual"}).status_code == 400
+    assert client.get("/api/jobs/", {"employment_type": "permanent"}).status_code == 400
+    assert client.get(
+        "/api/jobs/", {"experience_min": 5, "experience_max": 2}
+    ).status_code == 400
+    assert client.get(
+        "/api/jobs/", {"salary_min": 1000000, "salary_max": 500000}
+    ).status_code == 400
 
 
 @pytest.mark.django_db
@@ -206,4 +214,18 @@ def test_save_and_unsave_invalid_job_id(client):
 @pytest.mark.django_db
 def test_expired_job_cannot_be_saved(client):
     expired = create_job(expires_at=timezone.now() - timedelta(seconds=1))
+    assert client.post(f"/api/jobs/{expired.id}/save/").status_code == 404
+
+
+@pytest.mark.django_db
+def test_unavailable_saved_jobs_are_hidden_and_cannot_be_newly_saved(client, user):
+    inactive = create_job(1, is_active=False)
+    expired = create_job(2, expires_at=timezone.now() - timedelta(seconds=1))
+    SavedJob.objects.create(candidate=user.candidate_profile, job=inactive)
+    SavedJob.objects.create(candidate=user.candidate_profile, job=expired)
+
+    response = client.get("/api/jobs/saved/")
+    assert response.status_code == 200
+    assert response.data["count"] == 0
+    assert client.post(f"/api/jobs/{inactive.id}/save/").status_code == 404
     assert client.post(f"/api/jobs/{expired.id}/save/").status_code == 404
