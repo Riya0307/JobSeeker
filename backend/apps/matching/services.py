@@ -7,6 +7,7 @@ from django.utils import timezone
 
 from apps.candidates.models import CandidateProfile
 from apps.jobs.models import Job
+from apps.jobs.normalization import normalize_skill
 
 
 # Scores total 100: skills 50, experience 20, location 15, work mode 15.
@@ -29,14 +30,6 @@ def available_jobs() -> QuerySet[Job]:
     """Return jobs candidates can currently discover and match against."""
     now = timezone.now()
     return Job.objects.filter(is_active=True).filter(Q(expires_at__isnull=True) | Q(expires_at__gt=now))
-
-
-def normalize_skill(value: Any) -> str:
-    """Normalize case, whitespace, and separator punctuation without fuzzy matching."""
-    if not isinstance(value, str):
-        return ""
-    separated = re.sub(r"[^\w+#]+", " ", value.casefold(), flags=re.UNICODE)
-    return " ".join(separated.split())
 
 
 def _valid_skills(value: Any) -> list[str]:

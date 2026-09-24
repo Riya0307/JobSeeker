@@ -1,7 +1,13 @@
+from django.core.exceptions import ValidationError
 from django.db import models
 from django.db.models import F, Q
 
 from apps.candidates.models import CandidateProfile
+
+from .normalization import normalize_job_skills
+
+
+EMPLOYMENT_TYPES = {"full-time", "part-time", "contract", "internship", "temporary"}
 
 
 class Job(models.Model):
@@ -57,6 +63,38 @@ class Job(models.Model):
 
     def __str__(self):
         return f"{self.title} at {self.company_name}"
+
+    def clean(self):
+        super().clean()
+        errors = {}
+        for field_name in (
+            "title",
+            "company_name",
+            "description",
+            "location",
+            "employment_type",
+            "application_url",
+            "source",
+            "source_job_id",
+        ):
+            value = getattr(self, field_name)
+            if isinstance(value, str) and not value.strip():
+                errors[field_name] = "This field cannot be blank or whitespace only."
+
+        if isinstance(self.employment_type, str) and self.employment_type.casefold() not in EMPLOYMENT_TYPES:
+            errors["employment_type"] = "Select a supported employment type."
+        try:
+            self.skills = normalize_job_skills(self.skills)
+        except ValidationError as error:
+            errors["skills"] = error.messages
+        if errors:
+            raise ValidationError(errors)
+
+    def save(self, *args, **kwargs):
+        # Jobs enter through trusted backend/admin/seed paths rather than a
+        # candidate write API. Validate that boundary for every normal save.
+        self.full_clean()
+        return super().save(*args, **kwargs)
 
 
 class SavedJob(models.Model):

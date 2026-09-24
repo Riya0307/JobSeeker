@@ -2,6 +2,7 @@ from datetime import timedelta
 
 import pytest
 from django.contrib.auth import get_user_model
+from django.core.exceptions import ValidationError
 from django.utils import timezone
 from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import RefreshToken
@@ -154,6 +155,46 @@ def test_unsupported_ordering_and_invalid_ranges_are_rejected(client):
     assert client.get(
         "/api/jobs/", {"salary_min": 1000000, "salary_max": 500000}
     ).status_code == 400
+
+
+@pytest.mark.django_db
+def test_salary_filter_excludes_jobs_without_disclosed_salary(client):
+    disclosed = create_job(1, salary_min=800000, salary_max=1400000)
+    create_job(2, salary_min=None, salary_max=None)
+
+    response = client.get("/api/jobs/", {"salary_min": 900000})
+
+    assert response.status_code == 200
+    assert [item["id"] for item in response.data["results"]] == [disclosed.id]
+
+
+@pytest.mark.django_db
+def test_job_save_normalizes_and_deduplicates_skills():
+    job = create_job(skills=[" Python ", "PYTHON", "REST-API", "REST API", "---", ""])
+
+    assert job.skills == ["Python", "REST-API"]
+    assert Job.objects.get(pk=job.pk).skills == ["Python", "REST-API"]
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    "overrides",
+    [
+        {"title": "   "},
+        {"employment_type": "permanent"},
+        {"work_mode": "virtual"},
+        {"skills": {"Python": True}},
+        {"skills": ["Python", 3]},
+        {"application_url": "not a URL"},
+        {"salary_min": -1},
+        {"experience_min": -1},
+        {"salary_min": 1500000, "salary_max": 500000},
+        {"experience_min": 8, "experience_max": 2},
+    ],
+)
+def test_job_save_rejects_invalid_candidate_visible_data(overrides):
+    with pytest.raises(ValidationError):
+        create_job(**overrides)
 
 
 @pytest.mark.django_db

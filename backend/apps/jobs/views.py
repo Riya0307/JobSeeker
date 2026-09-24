@@ -11,11 +11,8 @@ from rest_framework.views import APIView
 
 from apps.candidates.models import CandidateProfile
 
-from .models import Job, SavedJob
+from .models import EMPLOYMENT_TYPES, Job, SavedJob
 from .serializers import JobSerializer
-
-
-EMPLOYMENT_TYPES = {"full-time", "part-time", "contract", "internship", "temporary"}
 
 
 class JobPagination(PageNumberPagination):
@@ -98,6 +95,10 @@ class JobListView(JobQuerysetMixin, ListAPIView):
             queryset = queryset.filter(Q(salary_max__gte=salary_min) | Q(salary_max__isnull=True))
         if salary_max is not None:
             queryset = queryset.filter(Q(salary_min__lte=salary_max) | Q(salary_min__isnull=True))
+        if salary_min is not None or salary_max is not None:
+            # A job with no disclosed salary cannot satisfy a constrained
+            # salary search. One-sided ranges retain open-end overlap behavior.
+            queryset = queryset.exclude(salary_min__isnull=True, salary_max__isnull=True)
 
         skills = [skill.strip() for skill in params.get("skills", "").split(",") if skill.strip()]
         for skill in skills:

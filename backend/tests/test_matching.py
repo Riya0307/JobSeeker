@@ -135,7 +135,9 @@ def test_candidate_with_no_skills_and_job_with_no_skills(candidate_user):
 def test_malformed_skill_data_is_safe(candidate_user):
     profile = candidate_user.candidate_profile
     profile.skills = {"unexpected": "shape"}
-    result = match(profile, skills={"also": "invalid"})
+    job = create_job()
+    job.skills = {"also": "invalid"}
+    result = calculate_match(profile, job)
     assert result.matched_skills == []
     assert result.missing_skills == []
     assert 0 <= result.match_score <= 100
