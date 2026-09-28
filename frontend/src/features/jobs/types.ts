@@ -14,8 +14,6 @@ export interface Job {
   salary_max: number | null;
   skills: string[];
   application_url: string;
-  source: string;
-  source_job_id: string;
   posted_at: string;
   expires_at: string | null;
   is_active: boolean;

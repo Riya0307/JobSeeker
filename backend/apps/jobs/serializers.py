@@ -22,8 +22,6 @@ class JobSerializer(serializers.ModelSerializer):
             "salary_max",
             "skills",
             "application_url",
-            "source",
-            "source_job_id",
             "posted_at",
             "expires_at",
             "is_active",
