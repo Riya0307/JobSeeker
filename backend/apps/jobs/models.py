@@ -33,6 +33,7 @@ class Job(models.Model):
     posted_at = models.DateTimeField()
     expires_at = models.DateTimeField(null=True, blank=True)
     is_active = models.BooleanField(default=True)
+    provider_last_seen_at = models.DateTimeField(null=True, blank=True, db_index=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -114,3 +115,37 @@ class SavedJob(models.Model):
 
     def __str__(self):
         return f"{self.candidate_id} saved job {self.job_id}"
+
+
+class IngestionRun(models.Model):
+    class Status(models.TextChoices):
+        RUNNING = "running", "Running"
+        COMPLETED = "completed", "Completed"
+        FAILED = "failed", "Failed"
+
+    provider = models.CharField(max_length=100)
+    status = models.CharField(max_length=20, choices=Status.choices, default=Status.RUNNING)
+    started_at = models.DateTimeField(auto_now_add=True)
+    finished_at = models.DateTimeField(null=True, blank=True)
+    full_snapshot = models.BooleanField(default=False)
+    fetched_count = models.PositiveIntegerField(default=0)
+    processed_count = models.PositiveIntegerField(default=0)
+    created_count = models.PositiveIntegerField(default=0)
+    updated_count = models.PositiveIntegerField(default=0)
+    unchanged_count = models.PositiveIntegerField(default=0)
+    rejected_count = models.PositiveIntegerField(default=0)
+    deactivated_count = models.PositiveIntegerField(default=0)
+    error_message = models.TextField(blank=True)
+    # A running row holds the provider name here. Completed/failed rows release
+    # it to NULL, while database uniqueness prevents overlapping runs.
+    running_lock = models.CharField(max_length=100, null=True, blank=True, unique=True)
+
+    class Meta:
+        ordering = ("-started_at", "-id")
+        indexes = [
+            models.Index(fields=("provider", "-started_at")),
+            models.Index(fields=("provider", "status")),
+        ]
+
+    def __str__(self):
+        return f"{self.provider} ingestion #{self.pk} ({self.status})"

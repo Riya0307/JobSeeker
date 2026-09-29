@@ -2,6 +2,7 @@ import json
 import re
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
+from html import unescape
 from html.parser import HTMLParser
 from typing import Any, Iterable, Mapping
 from urllib.error import HTTPError, URLError
@@ -9,6 +10,7 @@ from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 
 from django.core.exceptions import ValidationError
+from django.utils import timezone
 
 from apps.jobs.models import Job
 from apps.jobs.services import IngestionStatus, ingest_job
@@ -79,31 +81,53 @@ def _plain_text(value: Any) -> str:
     return parser.text()
 
 
+def _provider_text(value: Any) -> str:
+    """Decode provider entities and normalize harmless Unicode whitespace."""
+    if not isinstance(value, str):
+        return ""
+    return " ".join(unescape(value).split())
+
+
 def _required_text(record: Mapping[str, Any], field_name: str) -> str:
-    value = record.get(field_name)
-    if not isinstance(value, str) or not value.strip():
+    value = _provider_text(record.get(field_name))
+    if not value:
         raise ArbeitnowRecordError(f"{field_name} is required")
-    return value.strip()
+    return value
 
 
 def _employment_type(record: Mapping[str, Any]) -> str:
     raw_types = record.get("job_types")
+    if raw_types is None or raw_types == []:
+        raise ArbeitnowRecordError("employment type is required")
     if not isinstance(raw_types, list):
-        raise ArbeitnowRecordError("job_types must contain a supported employment type")
+        raise ArbeitnowRecordError("unsupported employment type")
     aliases = {
         "full time": "full-time",
-        "part time": "part-time",
-        "contract": "contract",
-        "freelance": "contract",
+        "full time permanent": "full-time",
         "internship": "internship",
-        "temporary": "temporary",
     }
+    observed_seniority_labels = {
+        "berufserfahren",
+        "experienced",
+        "professional / experienced",
+    }
+    values = []
     for raw_type in raw_types:
-        if isinstance(raw_type, str):
-            key = " ".join(re.sub(r"[_-]+", " ", raw_type.casefold()).split())
-            if key in aliases:
-                return aliases[key]
-    raise ArbeitnowRecordError("job_types must contain a supported employment type")
+        text = _provider_text(raw_type)
+        if text:
+            values.append(" ".join(re.sub(r"[_-]+", " ", text.casefold()).split()))
+    if not values:
+        raise ArbeitnowRecordError("employment type is required")
+
+    mapped = {aliases[value] for value in values if value in aliases}
+    unknown = [
+        value for value in values if value not in aliases and value not in observed_seniority_labels
+    ]
+    if len(mapped) > 1 or (mapped and unknown) or (len(values) > 1 and unknown):
+        raise ArbeitnowRecordError("ambiguous employment types")
+    if mapped:
+        return mapped.pop()
+    raise ArbeitnowRecordError("unsupported employment type")
 
 
 def _posted_at(record: Mapping[str, Any]) -> datetime:
@@ -129,6 +153,7 @@ def map_job(record: Mapping[str, Any]) -> tuple[str, dict[str, Any]]:
     tags = record.get("tags", [])
     if not isinstance(tags, list) or not all(isinstance(tag, str) for tag in tags):
         raise ArbeitnowRecordError("tags must be a list of text values")
+    tags = [_provider_text(tag) for tag in tags]
     remote = record.get("remote")
     if not isinstance(remote, bool):
         raise ArbeitnowRecordError("remote must be a boolean")
@@ -174,7 +199,11 @@ def fetch_jobs(limit: int = 25) -> list[Mapping[str, Any]]:
     return jobs[:limit]
 
 
-def ingest_records(records: Iterable[Mapping[str, Any]]) -> BatchIngestionReport:
+def ingest_records(
+    records: Iterable[Mapping[str, Any]],
+    observed_at=None,
+) -> BatchIngestionReport:
+    observed_at = observed_at or timezone.now()
     report = BatchIngestionReport()
     for record in records:
         report.fetched += 1
@@ -184,6 +213,8 @@ def ingest_records(records: Iterable[Mapping[str, Any]]) -> BatchIngestionReport
         try:
             source_job_id, payload = map_job(record)
             result = ingest_job(SOURCE, source_job_id, payload)
+            result.job.provider_last_seen_at = observed_at
+            result.job.save(update_fields=("provider_last_seen_at", "updated_at"))
         except (ArbeitnowRecordError, ValidationError) as error:
             report.rejected.append(RejectedJob(source_job_id, str(error)))
             continue

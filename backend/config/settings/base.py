@@ -141,6 +141,7 @@ CELERY_TASK_SERIALIZER = "json"
 CELERY_RESULT_SERIALIZER = "json"
 CELERY_TIMEZONE = TIME_ZONE
 CELERY_BEAT_SCHEDULE = {}
+JOB_PROVIDER_STALE_GRACE_HOURS = 24
 
 # AI configuration (Gemini – functionality not implemented yet)
 GEMINI_API_KEY = None
@@ -193,6 +194,9 @@ def configure_from_env(settings: dict) -> None:
     settings["CHANNEL_LAYERS"]["default"]["CONFIG"]["hosts"] = [redis_url]
     settings["CELERY_BROKER_URL"] = redis_url
     settings["CELERY_RESULT_BACKEND"] = redis_url
+    settings["JOB_PROVIDER_STALE_GRACE_HOURS"] = int(
+        os.environ.get("JOB_PROVIDER_STALE_GRACE_HOURS", "24")
+    )
 
     settings["GEMINI_API_KEY"] = os.environ.get("GEMINI_API_KEY", "")
     settings["FRONTEND_URL"] = os.environ.get("FRONTEND_URL", "http://localhost:5173")
