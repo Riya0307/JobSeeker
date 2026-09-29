@@ -46,6 +46,7 @@ class IngestionRunAdmin(admin.ModelAdmin):
         "unchanged_count",
         "rejected_count",
         "deactivated_count",
+        "rejection_reasons",
         "error_message",
         "running_lock",
     )

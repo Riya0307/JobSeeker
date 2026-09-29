@@ -1,4 +1,5 @@
 import logging
+from collections import Counter
 from dataclasses import dataclass
 from datetime import timedelta
 from typing import Callable, Iterable, Mapping
@@ -16,6 +17,28 @@ logger = logging.getLogger(__name__)
 DEFAULT_INGESTION_LIMIT = 25
 MAX_INGESTION_LIMIT = 100
 MAX_ERROR_LENGTH = 2000
+
+
+def normalize_rejection_reason(reason: str) -> str:
+    """Map provider/model errors to bounded operational categories."""
+    value = " ".join(str(reason).casefold().split())
+    if "ambiguous" in value and "employment" in value:
+        return "ambiguous employment type"
+    if "unsupported" in value and "employment" in value:
+        return "unsupported employment type"
+    if "job_types" in value or "employment_type" in value or "employment type" in value:
+        return "employment type required"
+    if "location" in value:
+        return "location required"
+    if "url" in value:
+        return "invalid URL"
+    if "salary" in value:
+        return "invalid salary"
+    if "experience" in value:
+        return "invalid experience"
+    if "skill" in value or "tag" in value:
+        return "invalid skills"
+    return "provider payload invalid"
 
 
 class IngestionAlreadyRunning(RuntimeError):
@@ -43,14 +66,23 @@ def _start_run(provider: str, full_snapshot: bool) -> IngestionRun:
         # Keep a uniqueness conflict inside a savepoint so the surrounding
         # request/test transaction remains usable for deterministic reporting.
         with transaction.atomic():
-            return IngestionRun.objects.create(
+            run = IngestionRun.objects.create(
                 provider=provider,
                 status=IngestionRun.Status.RUNNING,
                 full_snapshot=full_snapshot,
                 running_lock=provider,
             )
+            logger.info(
+                "job_ingestion_started",
+                extra={"provider": provider, "ingestion_run_id": run.pk},
+            )
+            return run
     except IntegrityError as error:
         if IngestionRun.objects.filter(running_lock=provider).exists():
+            logger.warning(
+                "job_ingestion_concurrency_rejected",
+                extra={"provider": provider},
+            )
             raise IngestionAlreadyRunning(f"An ingestion run for {provider} is already active.") from error
         raise
 
@@ -79,6 +111,10 @@ def deactivate_stale_provider_jobs(
         job.is_active = False
         job.save(update_fields=("is_active", "updated_at"))
         deactivated += 1
+    logger.info(
+        "job_ingestion_stale_deactivation_completed",
+        extra={"provider": provider, "deactivated_count": deactivated},
+    )
     return deactivated
 
 
@@ -98,7 +134,6 @@ def execute_ingestion_run(
             f"{provider} did not prove that the fetched data is a complete snapshot."
         )
     run = _start_run(provider, full_snapshot)
-    empty_report = BatchIngestionReport()
     try:
         records = fetcher(limit)
         run.fetched_count = len(records)
@@ -117,10 +152,29 @@ def execute_ingestion_run(
             run.unchanged_count = report.unchanged
             run.rejected_count = len(report.rejected)
             run.deactivated_count = deactivated
+            run.rejection_reasons = dict(
+                Counter(
+                    normalize_rejection_reason(rejected.reason)
+                    for rejected in report.rejected
+                )
+            )
             run.error_message = ""
             run.running_lock = None
             run.save()
-        logger.info("Completed %s ingestion run %s", provider, run.pk)
+        logger.info(
+            "job_ingestion_completed",
+            extra={
+                "provider": provider,
+                "ingestion_run_id": run.pk,
+                "fetched_count": run.fetched_count,
+                "processed_count": run.processed_count,
+                "created_count": run.created_count,
+                "updated_count": run.updated_count,
+                "unchanged_count": run.unchanged_count,
+                "rejected_count": run.rejected_count,
+                "deactivated_count": run.deactivated_count,
+            },
+        )
         return IngestionExecution(run=run, report=report)
     except Exception as error:
         finished_at = timezone.now()
@@ -129,7 +183,14 @@ def execute_ingestion_run(
         run.error_message = str(error)[:MAX_ERROR_LENGTH]
         run.running_lock = None
         run.save()
-        logger.exception("Failed %s ingestion run %s", provider, run.pk)
+        logger.exception(
+            "job_ingestion_failed",
+            extra={
+                "provider": provider,
+                "ingestion_run_id": run.pk,
+                "error_type": type(error).__name__,
+            },
+        )
         raise
 
 

@@ -12,5 +12,6 @@ urlpatterns = [
     path("api/interviews/", include("apps.interviews.urls")),
     path("api/notifications/", include("apps.notifications.urls")),
     path("api/job-alerts/", include("apps.job_alerts.urls")),
+    path("api/admin/job-ingestion/", include("apps.jobs.operational_urls")),
     path("api/health/", include("config.health_urls")),
 ]

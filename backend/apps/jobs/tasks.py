@@ -18,4 +18,5 @@ def ingest_arbeitnow_task(limit: int = DEFAULT_INGESTION_LIMIT):
         "unchanged": run.unchanged_count,
         "rejected": run.rejected_count,
         "deactivated": run.deactivated_count,
+        "rejection_reasons": run.rejection_reasons,
     }

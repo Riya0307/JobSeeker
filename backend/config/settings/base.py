@@ -142,6 +142,9 @@ CELERY_RESULT_SERIALIZER = "json"
 CELERY_TIMEZONE = TIME_ZONE
 CELERY_BEAT_SCHEDULE = {}
 JOB_PROVIDER_STALE_GRACE_HOURS = 24
+JOB_INGESTION_HEALTH_STALE_AFTER_HOURS = 24
+JOB_INGESTION_HIGH_REJECTION_RATE = 0.75
+JOB_INGESTION_STUCK_AFTER_HOURS = 2
 
 # AI configuration (Gemini – functionality not implemented yet)
 GEMINI_API_KEY = None
@@ -196,6 +199,15 @@ def configure_from_env(settings: dict) -> None:
     settings["CELERY_RESULT_BACKEND"] = redis_url
     settings["JOB_PROVIDER_STALE_GRACE_HOURS"] = int(
         os.environ.get("JOB_PROVIDER_STALE_GRACE_HOURS", "24")
+    )
+    settings["JOB_INGESTION_HEALTH_STALE_AFTER_HOURS"] = int(
+        os.environ.get("JOB_INGESTION_HEALTH_STALE_AFTER_HOURS", "24")
+    )
+    settings["JOB_INGESTION_HIGH_REJECTION_RATE"] = float(
+        os.environ.get("JOB_INGESTION_HIGH_REJECTION_RATE", "0.75")
+    )
+    settings["JOB_INGESTION_STUCK_AFTER_HOURS"] = int(
+        os.environ.get("JOB_INGESTION_STUCK_AFTER_HOURS", "2")
     )
 
     settings["GEMINI_API_KEY"] = os.environ.get("GEMINI_API_KEY", "")

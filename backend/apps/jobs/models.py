@@ -135,6 +135,7 @@ class IngestionRun(models.Model):
     unchanged_count = models.PositiveIntegerField(default=0)
     rejected_count = models.PositiveIntegerField(default=0)
     deactivated_count = models.PositiveIntegerField(default=0)
+    rejection_reasons = models.JSONField(default=dict, blank=True)
     error_message = models.TextField(blank=True)
     # A running row holds the provider name here. Completed/failed rows release
     # it to NULL, while database uniqueness prevents overlapping runs.
