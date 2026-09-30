@@ -96,6 +96,9 @@ def test_task_records_created_rejected_unchanged_and_updated_counts(monkeypatch)
     assert third["updated"] == 1
     assert Job.objects.filter(source="arbeitnow", source_job_id="python-engineer-123").count() == 1
     assert IngestionRun.objects.filter(status=IngestionRun.Status.COMPLETED).count() == 3
+    assert not IngestionRun.objects.exclude(
+        trigger=IngestionRun.Trigger.SCHEDULED
+    ).exists()
 
 
 @pytest.mark.django_db
@@ -327,12 +330,16 @@ def test_command_failure_is_recorded_and_reported(monkeypatch):
     assert run.status == IngestionRun.Status.FAILED
     assert run.running_lock is None
     assert "provider unavailable" in run.error_message
+    assert run.trigger == IngestionRun.Trigger.MANUAL
 
 
-def test_celery_task_is_discoverable_without_a_beat_schedule(settings):
+def test_celery_task_is_discoverable_with_one_bounded_beat_schedule(settings):
     from config.celery import app
 
     app.autodiscover_tasks(force=True)
 
     assert "jobs.ingest_arbeitnow" in app.tasks
-    assert settings.CELERY_BEAT_SCHEDULE == {}
+    assert list(settings.CELERY_BEAT_SCHEDULE) == ["arbeitnow-bounded-ingestion"]
+    entry = settings.CELERY_BEAT_SCHEDULE["arbeitnow-bounded-ingestion"]
+    assert entry["task"] == "jobs.ingest_arbeitnow"
+    assert entry["kwargs"] == {"limit": settings.JOB_INGEST_ARBEITNOW_LIMIT}

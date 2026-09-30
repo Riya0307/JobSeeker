@@ -123,7 +123,14 @@ class IngestionRun(models.Model):
         COMPLETED = "completed", "Completed"
         FAILED = "failed", "Failed"
 
+    class Trigger(models.TextChoices):
+        MANUAL = "manual", "Manual"
+        SCHEDULED = "scheduled", "Scheduled"
+
     provider = models.CharField(max_length=100)
+    trigger = models.CharField(
+        max_length=20, choices=Trigger.choices, default=Trigger.MANUAL
+    )
     status = models.CharField(max_length=20, choices=Status.choices, default=Status.RUNNING)
     started_at = models.DateTimeField(auto_now_add=True)
     finished_at = models.DateTimeField(null=True, blank=True)

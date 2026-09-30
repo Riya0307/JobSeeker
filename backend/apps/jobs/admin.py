@@ -21,6 +21,7 @@ class IngestionRunAdmin(admin.ModelAdmin):
     list_display = (
         "id",
         "provider",
+        "trigger",
         "status",
         "started_at",
         "finished_at",
@@ -31,10 +32,11 @@ class IngestionRunAdmin(admin.ModelAdmin):
         "rejected_count",
         "deactivated_count",
     )
-    list_filter = ("provider", "status", "full_snapshot", "started_at")
+    list_filter = ("provider", "trigger", "status", "full_snapshot", "started_at")
     search_fields = ("provider", "error_message")
     readonly_fields = (
         "provider",
+        "trigger",
         "status",
         "started_at",
         "finished_at",

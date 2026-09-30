@@ -26,6 +26,10 @@ class ArbeitnowProviderError(Exception):
     """Raised when the provider response cannot be fetched or understood."""
 
 
+class TransientArbeitnowProviderError(ArbeitnowProviderError):
+    """Raised for temporary transport/provider failures that may be retried."""
+
+
 class ArbeitnowRecordError(ValueError):
     """Raised when one provider record cannot map to the internal contract."""
 
@@ -187,8 +191,15 @@ def fetch_jobs(limit: int = 25) -> list[Mapping[str, Any]]:
     try:
         with urlopen(request, timeout=REQUEST_TIMEOUT_SECONDS) as response:
             body = response.read()
-    except (HTTPError, URLError, TimeoutError, OSError) as error:
-        raise ArbeitnowProviderError(f"Unable to fetch Arbeitnow jobs: {error}") from error
+    except HTTPError as error:
+        message = f"Unable to fetch Arbeitnow jobs: HTTP {error.code}"
+        if error.code == 429 or 500 <= error.code <= 599:
+            raise TransientArbeitnowProviderError(message) from error
+        raise ArbeitnowProviderError(message) from error
+    except (URLError, TimeoutError, OSError) as error:
+        raise TransientArbeitnowProviderError(
+            "Unable to fetch Arbeitnow jobs due to a temporary network failure"
+        ) from error
     try:
         document = json.loads(body)
     except (UnicodeDecodeError, json.JSONDecodeError) as error:

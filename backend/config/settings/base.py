@@ -1,7 +1,9 @@
 import os
+from datetime import timedelta
 from pathlib import Path
 
 from dotenv import load_dotenv
+from django.core.exceptions import ImproperlyConfigured
 
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
 load_dotenv(BASE_DIR.parent / ".env")
@@ -141,6 +143,10 @@ CELERY_TASK_SERIALIZER = "json"
 CELERY_RESULT_SERIALIZER = "json"
 CELERY_TIMEZONE = TIME_ZONE
 CELERY_BEAT_SCHEDULE = {}
+JOB_INGEST_ARBEITNOW_INTERVAL_MINUTES = 60
+JOB_INGEST_ARBEITNOW_LIMIT = 25
+JOB_INGEST_ARBEITNOW_MAX_RETRIES = 2
+JOB_INGEST_ARBEITNOW_RETRY_BACKOFF_SECONDS = 60
 JOB_PROVIDER_STALE_GRACE_HOURS = 24
 JOB_INGESTION_HEALTH_STALE_AFTER_HOURS = 24
 JOB_INGESTION_HIGH_REJECTION_RATE = 0.75
@@ -173,6 +179,35 @@ def _env_bool(name: str, default: bool = False) -> bool:
     return value.strip().lower() in {"1", "true", "yes", "on"}
 
 
+def _env_bounded_int(name: str, default: int, minimum: int, maximum: int) -> int:
+    try:
+        value = int(os.environ.get(name, str(default)))
+    except ValueError as error:
+        raise ImproperlyConfigured(f"{name} must be an integer.") from error
+    if not minimum <= value <= maximum:
+        raise ImproperlyConfigured(
+            f"{name} must be between {minimum} and {maximum}."
+        )
+    return value
+
+
+def build_arbeitnow_beat_schedule(interval_minutes: int, limit: int) -> dict:
+    """Build the single bounded provider schedule used by Celery Beat."""
+    if not 1 <= interval_minutes <= 10080:
+        raise ImproperlyConfigured(
+            "JOB_INGEST_ARBEITNOW_INTERVAL_MINUTES must be between 1 and 10080."
+        )
+    if not 1 <= limit <= 100:
+        raise ImproperlyConfigured("JOB_INGEST_ARBEITNOW_LIMIT must be between 1 and 100.")
+    return {
+        "arbeitnow-bounded-ingestion": {
+            "task": "jobs.ingest_arbeitnow",
+            "schedule": timedelta(minutes=interval_minutes),
+            "kwargs": {"limit": limit},
+        }
+    }
+
+
 def configure_from_env(settings: dict) -> None:
     """Apply environment-driven configuration shared across environments."""
     settings["SECRET_KEY"] = os.environ["DJANGO_SECRET_KEY"]
@@ -197,6 +232,21 @@ def configure_from_env(settings: dict) -> None:
     settings["CHANNEL_LAYERS"]["default"]["CONFIG"]["hosts"] = [redis_url]
     settings["CELERY_BROKER_URL"] = redis_url
     settings["CELERY_RESULT_BACKEND"] = redis_url
+    interval_minutes = _env_bounded_int(
+        "JOB_INGEST_ARBEITNOW_INTERVAL_MINUTES", 60, 1, 10080
+    )
+    ingestion_limit = _env_bounded_int("JOB_INGEST_ARBEITNOW_LIMIT", 25, 1, 100)
+    settings["JOB_INGEST_ARBEITNOW_INTERVAL_MINUTES"] = interval_minutes
+    settings["JOB_INGEST_ARBEITNOW_LIMIT"] = ingestion_limit
+    settings["JOB_INGEST_ARBEITNOW_MAX_RETRIES"] = _env_bounded_int(
+        "JOB_INGEST_ARBEITNOW_MAX_RETRIES", 2, 0, 5
+    )
+    settings["JOB_INGEST_ARBEITNOW_RETRY_BACKOFF_SECONDS"] = _env_bounded_int(
+        "JOB_INGEST_ARBEITNOW_RETRY_BACKOFF_SECONDS", 60, 1, 3600
+    )
+    settings["CELERY_BEAT_SCHEDULE"] = build_arbeitnow_beat_schedule(
+        interval_minutes, ingestion_limit
+    )
     settings["JOB_PROVIDER_STALE_GRACE_HOURS"] = int(
         os.environ.get("JOB_PROVIDER_STALE_GRACE_HOURS", "24")
     )

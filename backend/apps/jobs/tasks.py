@@ -1,11 +1,34 @@
 from celery import shared_task
+from django.conf import settings
 
-from .ingestion import DEFAULT_INGESTION_LIMIT, run_arbeitnow_ingestion
+from .ingestion import IngestionAlreadyRunning, run_arbeitnow_ingestion
+from .models import IngestionRun
+from .providers.arbeitnow import TransientArbeitnowProviderError
 
 
-@shared_task(name="jobs.ingest_arbeitnow")
-def ingest_arbeitnow_task(limit: int = DEFAULT_INGESTION_LIMIT):
-    execution = run_arbeitnow_ingestion(limit=limit)
+@shared_task(
+    bind=True,
+    name="jobs.ingest_arbeitnow",
+    max_retries=settings.JOB_INGEST_ARBEITNOW_MAX_RETRIES,
+)
+def ingest_arbeitnow_task(self, limit: int | None = None):
+    configured_limit = settings.JOB_INGEST_ARBEITNOW_LIMIT if limit is None else limit
+    try:
+        execution = run_arbeitnow_ingestion(
+            limit=configured_limit,
+            trigger=IngestionRun.Trigger.SCHEDULED,
+        )
+    except IngestionAlreadyRunning:
+        return {
+            "provider": "arbeitnow",
+            "status": "already_running",
+            "retrying": False,
+        }
+    except TransientArbeitnowProviderError as error:
+        countdown = settings.JOB_INGEST_ARBEITNOW_RETRY_BACKOFF_SECONDS * (
+            2**self.request.retries
+        )
+        raise self.retry(exc=error, countdown=countdown) from error
     run = execution.run
     return {
         "run_id": run.pk,

@@ -11,6 +11,7 @@ class IngestionRunSerializer(serializers.ModelSerializer):
         fields = (
             "id",
             "provider",
+            "trigger",
             "status",
             "started_at",
             "finished_at",

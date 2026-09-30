@@ -198,7 +198,10 @@ def test_operational_commands_filter_validate_and_detect_stuck_runs(settings):
         stdout=runs_output,
     )
     assert "Provider: arbeitnow" in status_output.getvalue()
-    assert f"{completed.pk} | arbeitnow | completed" in runs_output.getvalue()
+    assert (
+        f"{completed.pk} | arbeitnow | manual | completed"
+        in runs_output.getvalue()
+    )
     assert "other" not in runs_output.getvalue()
     with pytest.raises(CommandError, match="between 1 and 100"):
         call_command("ingestion_runs", limit=0)

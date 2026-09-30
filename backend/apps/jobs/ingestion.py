@@ -61,20 +61,25 @@ def validate_limit(limit: int) -> int:
     return limit
 
 
-def _start_run(provider: str, full_snapshot: bool) -> IngestionRun:
+def _start_run(provider: str, full_snapshot: bool, trigger: str) -> IngestionRun:
     try:
         # Keep a uniqueness conflict inside a savepoint so the surrounding
         # request/test transaction remains usable for deterministic reporting.
         with transaction.atomic():
             run = IngestionRun.objects.create(
                 provider=provider,
+                trigger=trigger,
                 status=IngestionRun.Status.RUNNING,
                 full_snapshot=full_snapshot,
                 running_lock=provider,
             )
             logger.info(
                 "job_ingestion_started",
-                extra={"provider": provider, "ingestion_run_id": run.pk},
+                extra={
+                    "provider": provider,
+                    "trigger": trigger,
+                    "ingestion_run_id": run.pk,
+                },
             )
             return run
     except IntegrityError as error:
@@ -126,14 +131,17 @@ def execute_ingestion_run(
     processor: Callable[[Iterable[Mapping], object], BatchIngestionReport],
     full_snapshot: bool = False,
     snapshot_complete: bool = False,
+    trigger: str = IngestionRun.Trigger.MANUAL,
 ) -> IngestionExecution:
     """Execute one tracked ingestion run with atomic writes and optional stale handling."""
     validate_limit(limit)
+    if trigger not in IngestionRun.Trigger.values:
+        raise ValueError("trigger must be manual or scheduled")
     if full_snapshot and not snapshot_complete:
         raise FullSnapshotNotVerified(
             f"{provider} did not prove that the fetched data is a complete snapshot."
         )
-    run = _start_run(provider, full_snapshot)
+    run = _start_run(provider, full_snapshot, trigger)
     try:
         records = fetcher(limit)
         run.fetched_count = len(records)
@@ -165,6 +173,7 @@ def execute_ingestion_run(
             "job_ingestion_completed",
             extra={
                 "provider": provider,
+                "trigger": run.trigger,
                 "ingestion_run_id": run.pk,
                 "fetched_count": run.fetched_count,
                 "processed_count": run.processed_count,
@@ -187,6 +196,7 @@ def execute_ingestion_run(
             "job_ingestion_failed",
             extra={
                 "provider": provider,
+                "trigger": run.trigger,
                 "ingestion_run_id": run.pk,
                 "error_type": type(error).__name__,
             },
@@ -198,6 +208,7 @@ def run_arbeitnow_ingestion(
     limit: int = DEFAULT_INGESTION_LIMIT,
     *,
     full_snapshot: bool = False,
+    trigger: str = IngestionRun.Trigger.MANUAL,
 ) -> IngestionExecution:
     # Arbeitnow's current adapter fetches a bounded first page and cannot prove
     # complete traversal. Full-snapshot stale handling is therefore disabled.
@@ -214,4 +225,5 @@ def run_arbeitnow_ingestion(
         processor=lambda records, observed_at: ingest_records(
             records, observed_at=observed_at
         ),
+        trigger=trigger,
     )

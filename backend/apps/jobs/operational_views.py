@@ -50,6 +50,10 @@ class IngestionRunListView(ListAPIView):
             if status not in IngestionRun.Status.values:
                 raise ValidationError({"status": "Select a supported ingestion status."})
             queryset = queryset.filter(status=status)
+        if trigger := params.get("trigger", "").strip():
+            if trigger not in IngestionRun.Trigger.values:
+                raise ValidationError({"trigger": "Select a supported ingestion trigger."})
+            queryset = queryset.filter(trigger=trigger)
         if value := params.get("started_after", "").strip():
             queryset = queryset.filter(started_at__gte=_date_bound(value, "started_after"))
         if value := params.get("started_before", "").strip():
