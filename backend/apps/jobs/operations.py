@@ -5,15 +5,13 @@ from django.db.models import Count, Q
 from django.utils import timezone
 
 from .models import IngestionRun, Job
-
-
-KNOWN_PROVIDERS = ("arbeitnow",)
+from .providers.registry import provider_identifiers
 
 
 def provider_names(provider: str | None = None) -> list[str]:
     if provider and provider.strip():
         return [provider.strip()]
-    discovered = set(KNOWN_PROVIDERS)
+    discovered = set(provider_identifiers())
     discovered.update(IngestionRun.objects.values_list("provider", flat=True).distinct())
     return sorted(name for name in discovered if name)
 

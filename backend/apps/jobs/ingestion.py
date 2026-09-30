@@ -5,12 +5,14 @@ from datetime import timedelta
 from typing import Callable, Iterable, Mapping
 
 from django.conf import settings
+from django.core.exceptions import ValidationError
 from django.db import IntegrityError, transaction
 from django.db.models import Q
 from django.utils import timezone
 
 from .models import IngestionRun, Job
-from .providers.arbeitnow import BatchIngestionReport
+from .providers.base import BatchIngestionReport, JobProviderAdapter, RejectedJob
+from .services import IngestionStatus, ingest_job
 
 
 logger = logging.getLogger(__name__)
@@ -59,6 +61,34 @@ def validate_limit(limit: int) -> int:
     if not isinstance(limit, int) or isinstance(limit, bool) or not 1 <= limit <= MAX_INGESTION_LIMIT:
         raise ValueError(f"limit must be between 1 and {MAX_INGESTION_LIMIT}")
     return limit
+
+
+def process_provider_records(
+    adapter: JobProviderAdapter,
+    records: Iterable[Mapping],
+    observed_at,
+) -> BatchIngestionReport:
+    """Map and ingest records while owning shared counters and last-seen state."""
+    report = BatchIngestionReport()
+    caught_errors = adapter.record_error_types + (ValidationError,)
+    for record in records:
+        report.fetched += 1
+        source_job_id = adapter.record_identifier(record)
+        try:
+            source_job_id, payload = adapter.map_record(record)
+            result = ingest_job(adapter.identifier, source_job_id, payload)
+            result.job.provider_last_seen_at = observed_at
+            result.job.save(update_fields=("provider_last_seen_at", "updated_at"))
+        except caught_errors as error:
+            report.rejected.append(RejectedJob(source_job_id, str(error)))
+            continue
+        if result.status == IngestionStatus.CREATED:
+            report.created += 1
+        elif result.status == IngestionStatus.UPDATED:
+            report.updated += 1
+        else:
+            report.unchanged += 1
+    return report
 
 
 def _start_run(provider: str, full_snapshot: bool, trigger: str) -> IngestionRun:
@@ -210,20 +240,45 @@ def run_arbeitnow_ingestion(
     full_snapshot: bool = False,
     trigger: str = IngestionRun.Trigger.MANUAL,
 ) -> IngestionExecution:
-    # Arbeitnow's current adapter fetches a bounded first page and cannot prove
-    # complete traversal. Full-snapshot stale handling is therefore disabled.
-    if full_snapshot:
-        raise FullSnapshotNotVerified(
-            "Arbeitnow does not currently expose verified complete-snapshot semantics."
+    return run_provider_ingestion(
+        "arbeitnow",
+        limit=limit,
+        full_snapshot=full_snapshot,
+        trigger=trigger,
+    )
+
+
+def run_provider_ingestion(
+    provider: str,
+    *,
+    limit: int | None = None,
+    full_snapshot: bool = False,
+    trigger: str = IngestionRun.Trigger.MANUAL,
+) -> IngestionExecution:
+    """Resolve one registered adapter and execute shared ingestion orchestration."""
+    from .providers.registry import get_provider
+
+    adapter = get_provider(provider)
+    requested_limit = adapter.default_limit if limit is None else limit
+    validate_limit(requested_limit)
+    if requested_limit > adapter.max_batch_size:
+        raise ValueError(
+            f"limit must not exceed {adapter.max_batch_size} for {adapter.identifier}"
         )
-    from .providers.arbeitnow import SOURCE, fetch_jobs, ingest_records
+    if full_snapshot and (
+        not adapter.capabilities.supports_full_snapshot
+        or not adapter.capabilities.supports_stale_deactivation
+    ):
+        raise FullSnapshotNotVerified(adapter.full_snapshot_error)
 
     return execute_ingestion_run(
-        provider=SOURCE,
-        limit=limit,
-        fetcher=fetch_jobs,
-        processor=lambda records, observed_at: ingest_records(
-            records, observed_at=observed_at
+        provider=adapter.identifier,
+        limit=requested_limit,
+        fetcher=adapter.fetch_records,
+        processor=lambda records, observed_at: process_provider_records(
+            adapter, records, observed_at
         ),
+        full_snapshot=full_snapshot,
+        snapshot_complete=full_snapshot,
         trigger=trigger,
     )

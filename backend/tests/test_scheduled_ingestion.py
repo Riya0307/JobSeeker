@@ -97,10 +97,14 @@ def test_scheduled_task_uses_configured_limit_and_never_requests_full_snapshot(
         captured.update(kwargs)
         return SimpleNamespace(run=task_result_run())
 
-    monkeypatch.setattr("apps.jobs.tasks.run_arbeitnow_ingestion", fake_run)
+    monkeypatch.setattr("apps.jobs.tasks.run_provider_ingestion", fake_run)
     result = ingest_arbeitnow_task.run()
 
-    assert captured == {"limit": 31, "trigger": IngestionRun.Trigger.SCHEDULED}
+    assert captured == {
+        "provider": "arbeitnow",
+        "limit": 31,
+        "trigger": IngestionRun.Trigger.SCHEDULED,
+    }
     assert result["status"] == IngestionRun.Status.COMPLETED
     assert result["deactivated"] == 0
 
@@ -139,6 +143,7 @@ def test_transient_failure_records_failed_run_and_requests_bounded_retry(
     assert run.trigger == IngestionRun.Trigger.SCHEDULED
     assert run.running_lock is None
     assert captured["countdown"] == 30
+    assert captured["max_retries"] == 2
     assert isinstance(captured["exc"], TransientArbeitnowProviderError)
 
 

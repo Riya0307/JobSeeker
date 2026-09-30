@@ -1,6 +1,5 @@
 import json
 import re
-from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from html import unescape
 from html.parser import HTMLParser
@@ -9,11 +8,11 @@ from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 
-from django.core.exceptions import ValidationError
+from django.conf import settings
 from django.utils import timezone
 
 from apps.jobs.models import Job
-from apps.jobs.services import IngestionStatus, ingest_job
+from .base import BatchIngestionReport, ProviderCapabilities, RejectedJob
 
 
 SOURCE = "arbeitnow"
@@ -55,25 +54,6 @@ class _HTMLTextExtractor(HTMLParser):
     def text(self) -> str:
         lines = (" ".join(line.split()) for line in "".join(self.parts).splitlines())
         return "\n".join(line for line in lines if line)
-
-
-@dataclass(frozen=True)
-class RejectedJob:
-    source_job_id: str
-    reason: str
-
-
-@dataclass
-class BatchIngestionReport:
-    fetched: int = 0
-    created: int = 0
-    updated: int = 0
-    unchanged: int = 0
-    rejected: list[RejectedJob] = field(default_factory=list)
-
-    @property
-    def processed(self) -> int:
-        return self.created + self.updated + self.unchanged + len(self.rejected)
 
 
 def _plain_text(value: Any) -> str:
@@ -214,29 +194,55 @@ def ingest_records(
     records: Iterable[Mapping[str, Any]],
     observed_at=None,
 ) -> BatchIngestionReport:
-    observed_at = observed_at or timezone.now()
-    report = BatchIngestionReport()
-    for record in records:
-        report.fetched += 1
-        source_job_id = "unknown"
-        if isinstance(record, Mapping) and isinstance(record.get("slug"), str):
-            source_job_id = record["slug"]
-        try:
-            source_job_id, payload = map_job(record)
-            result = ingest_job(SOURCE, source_job_id, payload)
-            result.job.provider_last_seen_at = observed_at
-            result.job.save(update_fields=("provider_last_seen_at", "updated_at"))
-        except (ArbeitnowRecordError, ValidationError) as error:
-            report.rejected.append(RejectedJob(source_job_id, str(error)))
-            continue
-        if result.status == IngestionStatus.CREATED:
-            report.created += 1
-        elif result.status == IngestionStatus.UPDATED:
-            report.updated += 1
-        else:
-            report.unchanged += 1
-    return report
+    # Compatibility entry point retained for existing callers and tests. The
+    # generic processor owns counters, last-seen tracking, and ingest_job().
+    from apps.jobs.ingestion import process_provider_records
+
+    return process_provider_records(
+        ArbeitnowProviderAdapter(),
+        records,
+        observed_at=observed_at or timezone.now(),
+    )
 
 
 def ingest_arbeitnow_jobs(limit: int = 25) -> BatchIngestionReport:
     return ingest_records(fetch_jobs(limit=limit))
+
+
+class ArbeitnowProviderAdapter:
+    identifier = SOURCE
+    max_batch_size = MAX_BATCH_SIZE
+    capabilities = ProviderCapabilities(
+        supports_full_snapshot=False,
+        supports_stale_deactivation=False,
+    )
+    record_error_types = (ArbeitnowRecordError,)
+    full_snapshot_error = (
+        "Arbeitnow does not currently expose verified complete-snapshot semantics."
+    )
+
+    @property
+    def default_limit(self) -> int:
+        return settings.JOB_INGEST_ARBEITNOW_LIMIT
+
+    @property
+    def max_retries(self) -> int:
+        return settings.JOB_INGEST_ARBEITNOW_MAX_RETRIES
+
+    @property
+    def retry_backoff_seconds(self) -> int:
+        return settings.JOB_INGEST_ARBEITNOW_RETRY_BACKOFF_SECONDS
+
+    def fetch_records(self, limit: int) -> list[Mapping[str, Any]]:
+        return fetch_jobs(limit)
+
+    def record_identifier(self, record: Any) -> str:
+        if isinstance(record, Mapping) and isinstance(record.get("slug"), str):
+            return record["slug"]
+        return "unknown"
+
+    def map_record(self, record: Mapping[str, Any]) -> tuple[str, dict[str, Any]]:
+        return map_job(record)
+
+    def is_transient_error(self, error: Exception) -> bool:
+        return isinstance(error, TransientArbeitnowProviderError)

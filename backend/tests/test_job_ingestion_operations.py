@@ -339,6 +339,7 @@ def test_celery_task_is_discoverable_with_one_bounded_beat_schedule(settings):
     app.autodiscover_tasks(force=True)
 
     assert "jobs.ingest_arbeitnow" in app.tasks
+    assert "jobs.ingest_provider" in app.tasks
     assert list(settings.CELERY_BEAT_SCHEDULE) == ["arbeitnow-bounded-ingestion"]
     entry = settings.CELERY_BEAT_SCHEDULE["arbeitnow-bounded-ingestion"]
     assert entry["task"] == "jobs.ingest_arbeitnow"
