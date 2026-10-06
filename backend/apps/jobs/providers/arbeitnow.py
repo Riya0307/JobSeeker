@@ -94,6 +94,7 @@ def _employment_type(record: Mapping[str, Any]) -> str:
         "berufserfahren",
         "experienced",
         "professional / experienced",
+        "senior",
     }
     values = []
     for raw_type in raw_types:

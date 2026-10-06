@@ -40,6 +40,16 @@ def normalize_rejection_reason(reason: str) -> str:
         return "invalid experience"
     if "skill" in value or "tag" in value:
         return "invalid skills"
+    if "title" in value:
+        return "title required"
+    if "company" in value:
+        return "company required"
+    if "description" in value:
+        return "description required"
+    if "created_at" in value or "record must" in value or "remote must" in value:
+        return "provider payload invalid"
+    if "validationerror" in value or "validation error" in value:
+        return "validation error"
     return "provider payload invalid"
 
 

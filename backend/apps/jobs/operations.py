@@ -1,11 +1,26 @@
 from datetime import timedelta
 
 from django.conf import settings
-from django.db.models import Count, Q
+from django.db.models import Count, Max, Q
 from django.utils import timezone
 
 from .models import IngestionRun, Job
 from .providers.registry import provider_identifiers
+
+
+def run_quality_metrics(run: IngestionRun) -> dict:
+    accepted_count = run.created_count + run.updated_count + run.unchanged_count
+    if not run.fetched_count:
+        return {
+            "accepted_count": accepted_count,
+            "acceptance_rate": 0.0,
+            "rejection_rate": 0.0,
+        }
+    return {
+        "accepted_count": accepted_count,
+        "acceptance_rate": round(accepted_count / run.fetched_count, 4),
+        "rejection_rate": round(run.rejected_count / run.fetched_count, 4),
+    }
 
 
 def provider_names(provider: str | None = None) -> list[str]:
@@ -24,6 +39,14 @@ def _job_counts(provider: str) -> tuple[int, int]:
     return counts["active"], counts["inactive"]
 
 
+def _latest_provider_seen_at(provider: str):
+    return (
+        Job.objects.filter(source=provider)
+        .exclude(source_job_id="")
+        .aggregate(latest=Max("provider_last_seen_at"))["latest"]
+    )
+
+
 def _duration_seconds(run: IngestionRun | None):
     if run is None or run.finished_at is None:
         return None
@@ -35,13 +58,26 @@ def provider_summary(provider: str) -> dict:
     successful = runs.filter(status=IngestionRun.Status.COMPLETED).first()
     failed = runs.filter(status=IngestionRun.Status.FAILED).first()
     running = runs.filter(status=IngestionRun.Status.RUNNING).first()
+    latest = runs.first()
     active_count, inactive_count = _job_counts(provider)
+    last_success_at = successful.finished_at if successful else None
+    success_age_seconds = None
+    if last_success_at is not None:
+        success_age_seconds = max(
+            0, round((timezone.now() - last_success_at).total_seconds(), 3)
+        )
     return {
         "provider": provider,
+        "latest_run": latest,
         "last_successful_run": successful,
         "last_failed_run": failed,
         "running_run": running,
         "last_success_duration_seconds": _duration_seconds(successful),
+        "last_success_at": last_success_at,
+        "last_success_age_seconds": success_age_seconds,
+        "latest_run_status": latest.status if latest else None,
+        "latest_error": latest.error_message if latest and latest.error_message else None,
+        "latest_provider_job_seen_at": _latest_provider_seen_at(provider),
         "active_job_count": active_count,
         "inactive_job_count": inactive_count,
     }

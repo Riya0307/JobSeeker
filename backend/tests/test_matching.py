@@ -249,6 +249,23 @@ def test_authenticated_matching_list_and_saved_state(client, candidate_user):
 
 
 @pytest.mark.django_db
+def test_recommendations_distinguish_saved_and_unsaved_without_duplicates(
+    client, candidate_user
+):
+    saved = create_job(title="Saved")
+    unsaved = create_job(title="Unsaved")
+    SavedJob.objects.create(candidate=candidate_user.candidate_profile, job=saved)
+
+    response = client.get("/api/matching/jobs/")
+    items = {item["job"]["id"]: item for item in response.data["results"]}
+
+    assert response.data["count"] == 2
+    assert len(items) == 2
+    assert items[saved.id]["job"]["is_saved"] is True
+    assert items[unsaved.id]["job"]["is_saved"] is False
+
+
+@pytest.mark.django_db
 def test_matching_detail(client):
     job = create_job(skills=["Python", "Docker"])
     response = client.get(f"/api/matching/jobs/{job.id}/")
@@ -292,6 +309,22 @@ def test_matching_list_pagination(client):
 
 
 @pytest.mark.django_db
+def test_equal_score_order_remains_stable_across_pages(client):
+    jobs = [create_job(title=f"Equal {index}") for index in range(12)]
+    responses = [
+        client.get("/api/matching/jobs/", {"page": page, "page_size": 5})
+        for page in (1, 2, 3)
+    ]
+    ids = [
+        item["job"]["id"]
+        for response in responses
+        for item in response.data["results"]
+    ]
+    assert ids == [job.id for job in reversed(jobs)]
+    assert len(ids) == len(set(ids))
+
+
+@pytest.mark.django_db
 def test_invalid_inactive_and_expired_jobs_return_404(client):
     inactive = create_job(is_active=False)
     expired = create_job(expires_at=timezone.now() - timedelta(seconds=1))
@@ -311,6 +344,39 @@ def test_missing_candidate_profile_returns_clean_error(db):
     assert response.status_code == 404
     assert "profile" in str(response.data["errors"]).lower()
     assert not CandidateProfile.objects.filter(user=user).exists()
+
+
+@pytest.mark.django_db
+def test_empty_incomplete_profile_returns_deterministic_recommendations(db):
+    user = User.objects.create_user(username="empty-profile@example.com", password="test-pass")
+    CandidateProfile.objects.create(
+        user=user,
+        location="",
+        years_of_experience=0,
+        skills=[],
+    )
+    job = create_job(
+        work_mode=Job.WorkMode.ONSITE,
+        location="Mumbai",
+        experience_min=1,
+        experience_max=3,
+        skills=["Python"],
+    )
+    client = APIClient()
+    client.force_authenticate(user=user)
+
+    first = client.get("/api/matching/jobs/")
+    second = client.get("/api/matching/jobs/")
+
+    assert first.status_code == 200
+    assert first.data == second.data
+    result = first.data["results"][0]
+    assert result["job"]["id"] == job.id
+    assert result["matched_skills"] == []
+    assert result["missing_skills"] == ["Python"]
+    assert "Required skills are missing" in result["reasons"]
+    assert any("Experience is below" in reason for reason in result["reasons"])
+    assert "Location compatibility is unknown" in result["reasons"]
 
 
 @pytest.mark.django_db

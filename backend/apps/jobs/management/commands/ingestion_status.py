@@ -1,6 +1,11 @@
 from django.core.management.base import BaseCommand
 
-from apps.jobs.operations import provider_health, provider_names, provider_summary
+from apps.jobs.operations import (
+    provider_health,
+    provider_names,
+    provider_summary,
+    run_quality_metrics,
+)
 
 
 class Command(BaseCommand):
@@ -17,12 +22,16 @@ class Command(BaseCommand):
             failure = summary["last_failed_run"]
             self.stdout.write(f"Provider: {provider}")
             if success:
+                quality = run_quality_metrics(success)
                 self.stdout.write(
                     "Last successful run: "
                     f"{success.finished_at} duration={summary['last_success_duration_seconds']}s "
                     f"fetched={success.fetched_count} created={success.created_count} "
                     f"updated={success.updated_count} unchanged={success.unchanged_count} "
-                    f"rejected={success.rejected_count} deactivated={success.deactivated_count}"
+                    f"rejected={success.rejected_count} deactivated={success.deactivated_count} "
+                    f"accepted={quality['accepted_count']} "
+                    f"acceptance_rate={quality['acceptance_rate']:.4f} "
+                    f"rejection_rate={quality['rejection_rate']:.4f}"
                 )
             else:
                 self.stdout.write("Last successful run: never")
@@ -39,4 +48,3 @@ class Command(BaseCommand):
             )
             conditions = ", ".join(health["conditions"]) or "none"
             self.stdout.write(f"Health: {health['status']} conditions={conditions}")
-

@@ -74,7 +74,10 @@ def test_observed_employment_values_are_normalized(provider_types, expected):
     assert payload["employment_type"] == expected
 
 
-@pytest.mark.parametrize("provider_types", [None, [], ["   "], ["berufserfahren"]])
+@pytest.mark.parametrize(
+    "provider_types",
+    [None, [], ["   "], ["berufserfahren"], ["experienced"], ["senior"]],
+)
 def test_missing_or_unsupported_employment_values_are_rejected(provider_types):
     with pytest.raises(ValueError):
         map_job(provider_job(job_types=provider_types))
@@ -111,6 +114,39 @@ def test_provider_strings_locations_entities_and_tags_are_cleaned_before_ingesti
     assert payload["location"] == "Berlin Mitte"
     assert payload["skills"] == ["Python", "PYTHON", "REST API"]
     assert payload["description"] == "Use Django <safely>."
+
+
+@pytest.mark.parametrize(
+    ("location", "expected"),
+    [
+        ("Berlin, Germany", "Berlin, Germany"),
+        ("  Berlin   Mitte  ", "Berlin Mitte"),
+        ("Berlin\u2003Mitte", "Berlin Mitte"),
+        ("Berlin&#x20;Mitte", "Berlin Mitte"),
+    ],
+)
+def test_location_normalizes_only_harmless_formatting(location, expected):
+    _, payload = map_job(provider_job(location=location))
+    assert payload["location"] == expected
+
+
+@pytest.mark.parametrize(
+    ("description", "expected"),
+    [
+        ("Plain text description", "Plain text description"),
+        ("<p>Build&nbsp;APIs &amp; services.</p>", "Build APIs & services."),
+        ("<div>First</div><div>Second</div>", "First\nSecond"),
+    ],
+)
+def test_description_preserves_meaningful_plain_text(description, expected):
+    _, payload = map_job(provider_job(description=description))
+    assert payload["description"] == expected
+
+
+@pytest.mark.parametrize("description", [None, "", "   ", "<p>&nbsp;</p>"])
+def test_empty_normalized_description_is_rejected(description):
+    with pytest.raises(ValueError, match="description is required"):
+        map_job(provider_job(description=description))
 
 
 @pytest.mark.parametrize("location", [None, "", " \u00a0 &#x20; "])
@@ -174,6 +210,34 @@ def test_batch_reports_created_unchanged_updated_and_rejected():
     job = Job.objects.get(source="arbeitnow", source_job_id="python-engineer-example-123")
     assert job.title == "Senior Python Engineer"
     assert job.skills == ["Python", "REST-API"]
+
+
+@pytest.mark.django_db
+def test_tags_use_canonical_normalization_without_provider_specific_semantics():
+    report = ingest_records(
+        [
+            provider_job(
+                tags=[" Python ", "PYTHON", "  REST   API  ", "", "---"]
+            )
+        ]
+    )
+    job = Job.objects.get(source="arbeitnow")
+    assert report.created == 1
+    assert job.skills == ["Python", "REST API"]
+
+
+@pytest.mark.django_db
+def test_normalized_reimport_is_unchanged_and_meaningful_change_updates():
+    first = ingest_records([provider_job(location=" Berlin   Mitte ")])
+    equivalent = ingest_records([provider_job(location="Berlin\u00a0Mitte")])
+    changed = ingest_records([provider_job(location="Hamburg, Germany")])
+
+    assert first.created == 1
+    assert equivalent.unchanged == 1
+    assert changed.updated == 1
+    assert Job.objects.filter(
+        source="arbeitnow", source_job_id="python-engineer-example-123"
+    ).count() == 1
 
 
 @pytest.mark.django_db

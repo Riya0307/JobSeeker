@@ -99,6 +99,9 @@ def test_run_detail_exposes_operational_fields_without_lock_or_payload():
     )
     assert response.status_code == 200
     assert response.data["created_count"] == 2
+    assert response.data["accepted_count"] == 9
+    assert response.data["acceptance_rate"] == 0.9
+    assert response.data["rejection_rate"] == 0.1
     assert response.data["rejection_reasons"] == {"location required": 1}
     assert response.data["error_message"] == "normalized provider failure"
     assert "running_lock" not in response.data
@@ -119,8 +122,55 @@ def test_summary_reports_latest_runs_and_provider_job_counts():
     result = response.data[0]
     assert result["last_successful_run"]["id"] == successful.pk
     assert result["last_failed_run"]["id"] == failed.pk
+    assert result["latest_run"]["id"] == failed.pk
+    assert result["latest_run_status"] == IngestionRun.Status.FAILED
+    assert result["latest_error"] == "offline"
+    assert result["last_success_at"] is not None
+    assert result["last_success_age_seconds"] >= 0
+    assert result["latest_provider_job_seen_at"] is not None
     assert result["active_job_count"] == 1
     assert result["inactive_job_count"] == 1
+
+
+@pytest.mark.django_db
+def test_operational_rates_are_zero_safe_and_summary_handles_no_history():
+    empty_run = create_run(
+        provider="empty",
+        fetched_count=0,
+        processed_count=0,
+        created_count=0,
+        updated_count=0,
+        unchanged_count=0,
+        rejected_count=0,
+        rejection_reasons={},
+    )
+    client = authenticated_client(staff=True)
+    detail = client.get(f"/api/admin/job-ingestion/runs/{empty_run.pk}/")
+    assert detail.data["accepted_count"] == 0
+    assert detail.data["acceptance_rate"] == 0.0
+    assert detail.data["rejection_rate"] == 0.0
+
+    summary = client.get(
+        "/api/admin/job-ingestion/summary/?provider=never-seen"
+    ).data[0]
+    assert summary["latest_run"] is None
+    assert summary["last_successful_run"] is None
+    assert summary["latest_run_status"] is None
+    assert summary["latest_error"] is None
+    assert summary["last_success_age_seconds"] is None
+    assert summary["active_job_count"] == 0
+
+
+@pytest.mark.django_db
+def test_summary_provider_order_is_deterministic_with_historical_providers():
+    create_run(provider="zeta")
+    create_run(provider="alpha")
+    response = authenticated_client(staff=True).get(
+        "/api/admin/job-ingestion/summary/"
+    )
+    providers = [item["provider"] for item in response.data]
+    assert providers == sorted(providers)
+    assert {"alpha", "arbeitnow", "zeta"} <= set(providers)
 
 
 @pytest.mark.django_db
@@ -198,6 +248,8 @@ def test_operational_commands_filter_validate_and_detect_stuck_runs(settings):
         stdout=runs_output,
     )
     assert "Provider: arbeitnow" in status_output.getvalue()
+    assert "acceptance_rate=0.9000" in status_output.getvalue()
+    assert "rejection_rate=0.1000" in status_output.getvalue()
     assert (
         f"{completed.pk} | arbeitnow | manual | completed"
         in runs_output.getvalue()
