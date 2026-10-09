@@ -1,5 +1,5 @@
 import apiClient from "../../api/client";
-import type { Resume, ResumeUpload } from "./types";
+import type { ParsedDataSelection, ParsedResumeData, Resume, ResumeUpload } from "./types";
 
 export async function listResumes(): Promise<Resume[]> {
   const response = await apiClient.get<Resume[]>("/resumes/");
@@ -31,4 +31,19 @@ export async function setPrimaryResume(id: number): Promise<Resume> {
 
 export async function deleteResume(id: number): Promise<void> {
   await apiClient.delete(`/resumes/${id}/`);
+}
+
+export async function parseResume(id: number): Promise<ParsedResumeData> {
+  const response = await apiClient.post<ParsedResumeData>(`/resumes/${id}/parse/`);
+  return response.data;
+}
+
+export async function getParsedResume(id: number): Promise<ParsedResumeData> {
+  const response = await apiClient.get<ParsedResumeData>(`/resumes/${id}/parsed/`);
+  return response.data;
+}
+
+export async function applyParsedResume(id: number, selection: ParsedDataSelection): Promise<{ updated_fields: string[] }> {
+  const response = await apiClient.post<{ updated_fields: string[] }>(`/resumes/${id}/parsed/apply/`, selection);
+  return response.data;
 }

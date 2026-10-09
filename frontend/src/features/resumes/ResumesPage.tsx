@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { getApiError, inputClass } from "../auth/formUtils";
 import * as resumesApi from "./api";
-import type { Resume } from "./types";
+import ParsedResumePanel from "./ParsedResumePanel";
+import type { ParsedDataSelection, ParsedResumeData, Resume } from "./types";
 
 const MAX_FILE_SIZE = 5 * 1024 * 1024;
 
@@ -39,6 +40,11 @@ export default function ResumesPage() {
   const [deleting, setDeleting] = useState<Resume | null>(null);
   const [deleteBusy, setDeleteBusy] = useState(false);
   const [primaryBusy, setPrimaryBusy] = useState<number | null>(null);
+  const [parsingBusy, setParsingBusy] = useState<number | null>(null);
+  const [reviewing, setReviewing] = useState<Resume | null>(null);
+  const [parsed, setParsed] = useState<ParsedResumeData | null>(null);
+  const [parsedLoading, setParsedLoading] = useState(false);
+  const [parsedError, setParsedError] = useState("");
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -100,6 +106,33 @@ export default function ResumesPage() {
     finally { setDeleteBusy(false); }
   }
 
+  async function requestParse(resume: Resume) {
+    setParsingBusy(resume.id); setError(""); setSuccess("");
+    try {
+      const result = await resumesApi.parseResume(resume.id);
+      setResumes((items) => items.map((item) => item.id === resume.id ? { ...item, parsing_status: result.status } : item));
+      setSuccess(result.status === "completed" ? "Existing parsed results are ready to review." : "Resume parsing was requested.");
+      setReviewing(resume); setParsed(result); setParsedError("");
+    } catch (reason) { setError(getApiError(reason)); }
+    finally { setParsingBusy(null); }
+  }
+
+  async function loadParsed(resume: Resume) {
+    setReviewing(resume); setParsedLoading(true); setParsedError("");
+    try {
+      const result = await resumesApi.getParsedResume(resume.id);
+      setParsed(result);
+      setResumes((items) => items.map((item) => item.id === resume.id ? { ...item, parsing_status: result.status } : item));
+    } catch (reason) { setParsed(null); setParsedError(getApiError(reason)); }
+    finally { setParsedLoading(false); }
+  }
+
+  async function applyParsed(selection: ParsedDataSelection) {
+    if (!reviewing) return;
+    try { await resumesApi.applyParsedResume(reviewing.id, selection); setSuccess("Selected resume data was applied to your profile."); }
+    catch (reason) { setParsedError(getApiError(reason)); throw reason; }
+  }
+
   return (
     <main className="mx-auto max-w-6xl px-4 py-10 sm:px-6">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
@@ -115,9 +148,11 @@ export default function ResumesPage() {
           <div className="flex items-start justify-between gap-3"><h2 className="text-lg font-semibold">{resume.title}</h2>{resume.is_primary && <span className="shrink-0 rounded-full bg-amber-400/10 px-3 py-1 text-xs font-medium text-amber-300">★ Primary Resume</span>}</div>
           <p className="mt-5 truncate text-sm text-slate-200" title={resume.file_name}>{resume.file_name}</p>
           <p className="mt-1 text-xs uppercase tracking-wider text-slate-500">{resume.file_type === "application/pdf" ? "PDF" : resume.file_type} • {formatSize(resume.file_size)}</p>
+          <p className="mt-2 text-xs text-slate-400">Parsing: <span className="capitalize text-slate-200">{resume.parsing_status ?? "not requested"}</span></p>
           <dl className="mt-5 grid grid-cols-2 gap-3 border-t border-white/10 pt-4 text-xs text-slate-500"><div><dt>Created</dt><dd className="mt-1 text-slate-300">{formatDate(resume.created_at)}</dd></div><div><dt>Updated</dt><dd className="mt-1 text-slate-300">{formatDate(resume.updated_at)}</dd></div></dl>
           <div className="mt-6 flex flex-wrap gap-2">
             <button onClick={() => setViewing(resume)} className="rounded-lg border border-slate-700 px-3 py-2 text-xs font-medium hover:border-slate-500">View</button>
+            {resume.parsing_status ? <button onClick={() => void loadParsed(resume)} className="rounded-lg border border-cyan-400/30 px-3 py-2 text-xs font-medium text-cyan-300">Review parsed data</button> : <button disabled={parsingBusy !== null} onClick={() => void requestParse(resume)} className="rounded-lg border border-cyan-400/30 px-3 py-2 text-xs font-medium text-cyan-300 disabled:opacity-50">{parsingBusy === resume.id ? "Requesting..." : "Parse resume"}</button>}
             <button onClick={() => { setEditing(resume); setEditTitle(resume.title); }} className="rounded-lg border border-slate-700 px-3 py-2 text-xs font-medium hover:border-slate-500">Edit</button>
             {!resume.is_primary && <button disabled={primaryBusy !== null} onClick={() => void makePrimary(resume)} className="rounded-lg border border-cyan-400/30 px-3 py-2 text-xs font-medium text-cyan-300 hover:bg-cyan-400/10 disabled:opacity-50">{primaryBusy === resume.id ? "Setting..." : "Set Primary"}</button>}
             <button onClick={() => setDeleting(resume)} className="ml-auto rounded-lg border border-red-400/20 px-3 py-2 text-xs font-medium text-red-300 hover:bg-red-400/10">Delete</button>
@@ -134,6 +169,7 @@ export default function ResumesPage() {
       {viewing && <Modal title={viewing.title} onClose={() => setViewing(null)}><dl className="mt-5 space-y-3 text-sm"><div><dt className="text-slate-500">File name</dt><dd className="mt-1 break-all">{viewing.file_name}</dd></div><div><dt className="text-slate-500">File</dt><dd className="mt-1">PDF • {formatSize(viewing.file_size)}</dd></div><div><dt className="text-slate-500">Updated</dt><dd className="mt-1">{formatDate(viewing.updated_at)}</dd></div></dl><button onClick={() => setViewing(null)} className="mt-6 w-full rounded-lg border border-slate-700 px-4 py-2 text-sm">Close</button></Modal>}
       {editing && <Modal title="Edit Resume" onClose={() => !saving && setEditing(null)}><form onSubmit={saveTitle} className="mt-5"><label className="text-sm text-slate-300">Resume Title<input autoFocus required className={inputClass} value={editTitle} onChange={(e) => setEditTitle(e.target.value)} /></label><div className="mt-6 flex justify-end gap-3"><button type="button" onClick={() => setEditing(null)} className="rounded-lg border border-slate-700 px-4 py-2 text-sm">Cancel</button><button disabled={saving} className="rounded-lg bg-cyan-400 px-4 py-2 text-sm font-semibold text-slate-950 disabled:opacity-60">{saving ? "Saving..." : "Save"}</button></div></form></Modal>}
       {deleting && <Modal title="Delete this resume?" onClose={() => !deleteBusy && setDeleting(null)}><p className="mt-3 text-sm text-slate-400">This action cannot be undone.</p><div className="mt-6 flex justify-end gap-3"><button disabled={deleteBusy} onClick={() => setDeleting(null)} className="rounded-lg border border-slate-700 px-4 py-2 text-sm">Cancel</button><button disabled={deleteBusy} onClick={() => void confirmDelete()} className="rounded-lg bg-red-500 px-4 py-2 text-sm font-semibold text-white disabled:opacity-60">{deleteBusy ? "Deleting..." : "Delete"}</button></div></Modal>}
+      {reviewing && <ParsedResumePanel resume={reviewing} data={parsed} loading={parsedLoading} error={parsedError} onClose={() => { setReviewing(null); setParsed(null); setParsedError(""); }} onRefresh={() => void loadParsed(reviewing)} onRetry={() => void requestParse(reviewing)} onApply={applyParsed} />}
     </main>
   );
 }

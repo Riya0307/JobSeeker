@@ -3,7 +3,7 @@ from pathlib import Path
 from django.conf import settings
 from rest_framework import serializers
 
-from .models import Resume
+from .models import Resume, ResumeParsedData
 
 
 DEFAULT_MAX_RESUME_SIZE = 5 * 1024 * 1024
@@ -11,6 +11,7 @@ DEFAULT_MAX_RESUME_SIZE = 5 * 1024 * 1024
 
 class ResumeSerializer(serializers.ModelSerializer):
     file = serializers.FileField(write_only=True, required=False)
+    parsing_status = serializers.SerializerMethodField()
 
     class Meta:
         model = Resume
@@ -24,6 +25,7 @@ class ResumeSerializer(serializers.ModelSerializer):
             "is_primary",
             "created_at",
             "updated_at",
+            "parsing_status",
         )
         read_only_fields = (
             "id",
@@ -33,6 +35,12 @@ class ResumeSerializer(serializers.ModelSerializer):
             "created_at",
             "updated_at",
         )
+
+    def get_parsing_status(self, instance):
+        try:
+            return instance.parsed_data.status
+        except ResumeParsedData.DoesNotExist:
+            return None
 
     def validate(self, attrs):
         upload = attrs.get("file")
@@ -77,3 +85,37 @@ class ResumeSerializer(serializers.ModelSerializer):
         if upload is not None:
             validated_data.update(self.metadata_for(upload))
         return super().update(instance, validated_data)
+
+
+class ResumeParsedDataSerializer(serializers.ModelSerializer):
+    estimated_experience_years = serializers.SerializerMethodField()
+    has_extracted_text = serializers.SerializerMethodField()
+
+    class Meta:
+        model = ResumeParsedData
+        fields = (
+            "status", "parser_version", "skills", "job_titles", "companies",
+            "employment_history", "education", "projects", "certifications",
+            "estimated_experience_months", "estimated_experience_years",
+            "has_extracted_text", "parsing_error", "extracted_at", "updated_at",
+        )
+        read_only_fields = fields
+
+    def get_estimated_experience_years(self, instance):
+        if instance.estimated_experience_months is None:
+            return None
+        return round(instance.estimated_experience_months / 12, 1)
+
+    def get_has_extracted_text(self, instance):
+        return bool(instance.extracted_text.strip())
+
+
+class ApplyParsedDataSerializer(serializers.Serializer):
+    apply_skills = serializers.BooleanField(default=False)
+    apply_experience = serializers.BooleanField(default=False)
+    apply_current_job = serializers.BooleanField(default=False)
+
+    def validate(self, attrs):
+        if not any(attrs.values()):
+            raise serializers.ValidationError("Select at least one field to apply.")
+        return attrs
