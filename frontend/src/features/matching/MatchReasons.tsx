@@ -8,7 +8,7 @@ export default function MatchReasons({ matchedSkills, missingSkills, reasons }: 
   return (
     <div className="mt-6 grid gap-5 border-t border-white/10 pt-5 lg:grid-cols-3">
       <section aria-labelledby="matched-skills-heading">
-        <h3 id="matched-skills-heading" className="text-sm font-semibold text-slate-200">Matched skills</h3>
+        <h3 id="matched-skills-heading" className="text-sm font-semibold text-slate-200">Matched skills ({matchedSkills.length})</h3>
         {matchedSkills.length ? (
           <ul className="mt-3 flex flex-wrap gap-2">
             {matchedSkills.map((skill) => <li key={skill} className="rounded-full bg-emerald-400/10 px-3 py-1 text-xs text-emerald-200">✓ {skill}</li>)}
@@ -16,7 +16,7 @@ export default function MatchReasons({ matchedSkills, missingSkills, reasons }: 
         ) : <p className="mt-2 text-sm text-slate-500">No required skills matched yet.</p>}
       </section>
       <section aria-labelledby="missing-skills-heading">
-        <h3 id="missing-skills-heading" className="text-sm font-semibold text-slate-200">Skills to improve</h3>
+        <h3 id="missing-skills-heading" className="text-sm font-semibold text-slate-200">Missing skills ({missingSkills.length})</h3>
         {missingSkills.length ? (
           <ul className="mt-3 flex flex-wrap gap-2">
             {missingSkills.map((skill) => <li key={skill} className="rounded-full bg-amber-400/10 px-3 py-1 text-xs text-amber-200">+ {skill}</li>)}

@@ -237,6 +237,17 @@ def test_all_specified_criteria_must_match_and_unspecified_do_not_restrict(user)
 
 
 @pytest.mark.django_db
+def test_skill_aliases_match_alerts_without_duplicate_notifications(user):
+    alert = create_alert(user, keywords="", skills=["JS", "JavaScript"])
+    job = create_job(skills=["JavaScript"])
+    assert alert.skills == ["JS", "JavaScript"]
+    assert job_matches_alert(alert, job) is True
+    assert Notification.objects.filter(candidate=user.candidate_profile, job=job).count() == 1
+    assert evaluate_job_alerts(job) == 0
+    assert Notification.objects.filter(candidate=user.candidate_profile, job=job).count() == 1
+
+
+@pytest.mark.django_db
 def test_salary_requirement_rejects_missing_salary(user):
     job = create_job(salary_min=None, salary_max=None)
     alert = create_alert(user, keywords="", salary_min=800000)

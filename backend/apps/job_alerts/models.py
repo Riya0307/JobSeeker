@@ -4,7 +4,7 @@ from django.db.models import F, Q
 
 from apps.candidates.models import CandidateProfile
 from apps.jobs.models import Job
-from apps.matching.services import normalize_skill
+from apps.jobs.normalization import normalize_skill
 
 
 MAX_ALERT_SKILLS = 25

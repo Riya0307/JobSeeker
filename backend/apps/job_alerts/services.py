@@ -2,7 +2,7 @@ from django.db.models import Q
 from django.utils import timezone
 
 from apps.jobs.models import Job
-from apps.matching.services import normalize_skill
+from apps.jobs.normalization import normalize_skill
 from apps.notifications.services import create_job_alert_notification
 
 from .models import JobAlert

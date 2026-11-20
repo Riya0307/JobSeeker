@@ -3,6 +3,7 @@ from uuid import uuid4
 
 import pytest
 from django.contrib.auth import get_user_model
+from django.core.files.uploadedfile import SimpleUploadedFile
 from django.utils import timezone
 from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import RefreshToken
@@ -10,6 +11,7 @@ from rest_framework_simplejwt.tokens import RefreshToken
 from apps.candidates.models import CandidateProfile
 from apps.jobs.models import Job, SavedJob
 from apps.matching.services import calculate_match, normalize_skill
+from apps.resumes.models import Resume, ResumeParsedData
 
 User = get_user_model()
 
@@ -83,14 +85,35 @@ def match(profile, **job_overrides):
     [
         (" Python ", "python"),
         ("PYTHON", "python"),
-        (" React   JS ", "react js"),
-        ("react-js", "react js"),
-        ("react.js", "react js"),
+        (" React   JS ", "react"),
+        ("react-js", "react"),
+        ("react.js", "react"),
         (None, ""),
     ],
 )
 def test_skill_normalization(value, expected):
     assert normalize_skill(value) == expected
+
+
+@pytest.mark.parametrize(
+    ("left", "right", "canonical"),
+    [
+        ("JS", "JavaScript", "javascript"),
+        ("TS", "TypeScript", "typescript"),
+        ("Postgres", "PostgreSQL", "postgresql"),
+        ("Amazon Web Services", "AWS", "aws"),
+        ("React.js", "React", "react"),
+        ("NodeJS", "Node.js", "node js"),
+        ("CI/CD", "Continuous Integration and Continuous Deployment", "ci cd"),
+    ],
+)
+def test_controlled_skill_aliases_share_a_canonical_key(left, right, canonical):
+    assert normalize_skill(left) == normalize_skill(right) == canonical
+
+
+@pytest.mark.parametrize(("left", "right"), [("Java", "JavaScript"), ("C", "C++"), ("Go", "Golang")])
+def test_ambiguous_or_distinct_skills_are_not_aliased(left, right):
+    assert normalize_skill(left) != normalize_skill(right)
 
 
 @pytest.mark.django_db
@@ -114,9 +137,9 @@ def test_all_partial_and_no_skills_matched(candidate_user):
     assert partial_result.match_score == 75
     assert none_result.match_score == 50
     assert partial_result.missing_skills == ["Docker"]
-    assert "Strong skills match" in all_result.reasons
-    assert "Several required skills are missing" in partial_result.reasons
-    assert "Required skills are missing" in none_result.reasons
+    assert "2 of 2 required skills matched" in all_result.reasons
+    assert "1 of 2 required skills matched; 1 missing" in partial_result.reasons
+    assert "0 of 2 required skills matched; 2 missing" in none_result.reasons
 
 
 @pytest.mark.django_db
@@ -128,7 +151,7 @@ def test_candidate_with_no_skills_and_job_with_no_skills(candidate_user):
     assert no_candidate_skills.matched_skills == []
     assert no_candidate_skills.missing_skills == ["Python"]
     assert no_job_skills.match_score == 100
-    assert "not penalized" in no_job_skills.reasons[0]
+    assert "skills component is neutral" in no_job_skills.reasons[0]
 
 
 @pytest.mark.django_db
@@ -154,7 +177,18 @@ def test_duplicate_and_empty_normalized_skills_do_not_distort_coverage(candidate
     assert result.matched_skills == ["Python", "REST-API"]
     assert result.missing_skills == ["Django"]
     assert result.match_score == 83
-    assert "Several required skills are missing" in result.reasons
+    assert "2 of 3 required skills matched; 1 missing" in result.reasons
+
+
+@pytest.mark.django_db
+def test_duplicate_aliases_do_not_inflate_or_distort_skill_score(candidate_user):
+    profile = candidate_user.candidate_profile
+    profile.skills = ["JS", "JavaScript", "React.js"]
+    result = match(profile, skills=["JavaScript", "JS", "React", "react.js", "TypeScript"])
+    assert result.matched_skills == ["JavaScript", "React"]
+    assert result.missing_skills == ["TypeScript"]
+    assert result.match_score == 83
+    assert result.reasons[0] == "2 of 3 required skills matched; 1 missing"
 
 
 @pytest.mark.django_db
@@ -214,7 +248,17 @@ def test_location_scoring(
 def test_work_modes_are_neutral_without_candidate_preference(candidate_user, work_mode):
     result = match(candidate_user.candidate_profile, work_mode=work_mode)
     assert result.match_score == 100
-    assert "no work-mode preference is specified" in result.reasons[3]
+    assert "neutral because no candidate preference is stored" in result.reasons[3]
+
+
+@pytest.mark.django_db
+def test_invalid_experience_range_is_conservative(candidate_user):
+    job = create_job()
+    job.experience_min = 5
+    job.experience_max = 2
+    result = calculate_match(candidate_user.candidate_profile, job)
+    assert result.match_score == 80
+    assert "invalid experience range" in result.reasons[1]
 
 
 @pytest.mark.django_db
@@ -374,7 +418,7 @@ def test_empty_incomplete_profile_returns_deterministic_recommendations(db):
     assert result["job"]["id"] == job.id
     assert result["matched_skills"] == []
     assert result["missing_skills"] == ["Python"]
-    assert "Required skills are missing" in result["reasons"]
+    assert "0 of 1 required skills matched; 1 missing" in result["reasons"]
     assert any("Experience is below" in reason for reason in result["reasons"])
     assert "Location compatibility is unknown" in result["reasons"]
 
@@ -398,3 +442,63 @@ def test_candidate_isolation_and_candidate_id_is_ignored(client, candidate_user,
     assert own_result["matched_skills"] == ["Python"]
     assert own_result["match_score"] != other_result.match_score
     assert candidate_user.candidate_profile.skills == ["Python", "Django", "SQL"]
+
+
+@pytest.mark.django_db
+def test_unreviewed_resume_data_cannot_influence_matching(candidate_user):
+    profile = candidate_user.candidate_profile
+    profile.skills = []
+    profile.years_of_experience = 0
+    resume = Resume.objects.create(
+        candidate=profile,
+        title="Unreviewed",
+        file=SimpleUploadedFile("resume.pdf", b"%PDF-1.4\n%%EOF", content_type="application/pdf"),
+        file_name="resume.pdf",
+        file_type="application/pdf",
+        file_size=15,
+    )
+    ResumeParsedData.objects.create(
+        resume=resume,
+        parser_version="1.0",
+        file_hash="a" * 64,
+        status=ResumeParsedData.Status.COMPLETED,
+        skills=["Python", "Django"],
+        estimated_experience_months=60,
+    )
+    result = match(profile, skills=["Python"], experience_min=3, experience_max=6)
+    assert result.matched_skills == []
+    assert result.match_score == 35
+
+
+@pytest.mark.django_db
+def test_explicitly_applied_resume_profile_values_influence_matching(client, candidate_user):
+    profile = candidate_user.candidate_profile
+    profile.skills = []
+    profile.years_of_experience = 0
+    profile.save(update_fields=("skills", "years_of_experience", "updated_at"))
+    resume = Resume.objects.create(
+        candidate=profile,
+        title="Reviewed",
+        file=SimpleUploadedFile("resume.pdf", b"%PDF-1.4\n%%EOF", content_type="application/pdf"),
+        file_name="resume.pdf",
+        file_type="application/pdf",
+        file_size=15,
+    )
+    ResumeParsedData.objects.create(
+        resume=resume,
+        parser_version="1.0",
+        file_hash="b" * 64,
+        status=ResumeParsedData.Status.COMPLETED,
+        skills=["JS"],
+        estimated_experience_months=48,
+    )
+    apply_response = client.post(
+        f"/api/resumes/{resume.id}/parsed/apply/",
+        {"apply_skills": True, "apply_experience": True, "apply_current_job": False},
+        format="json",
+    )
+    assert apply_response.status_code == 200
+    profile.refresh_from_db()
+    result = match(profile, skills=["JavaScript"], experience_min=3, experience_max=5)
+    assert result.matched_skills == ["JavaScript"]
+    assert result.match_score == 100

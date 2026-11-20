@@ -52,16 +52,12 @@ def _score_skills(candidate_skills: Any, job_skills: Any):
     matched = [skill for skill in required if normalize_skill(skill) in candidate_normalized]
     missing = [skill for skill in required if normalize_skill(skill) not in candidate_normalized]
     if not required:
-        return SKILLS_WEIGHT, matched, missing, "No required skills are listed; skills were not penalized"
+        return SKILLS_WEIGHT, matched, missing, "No required skills are listed; the skills component is neutral"
 
     score = int((len(matched) / len(required)) * SKILLS_WEIGHT + 0.5)
-    ratio = len(matched) / len(required)
-    if ratio >= 0.8:
-        reason = "Strong skills match"
-    elif matched:
-        reason = "Several required skills are missing"
-    else:
-        reason = "Required skills are missing"
+    reason = f"{len(matched)} of {len(required)} required skills matched"
+    if missing:
+        reason += f"; {len(missing)} missing"
     return score, matched, missing, reason
 
 
@@ -70,6 +66,8 @@ def _score_experience(candidate_years: Any, minimum: Any, maximum: Any):
     minimum = minimum if isinstance(minimum, int) and minimum >= 0 else None
     maximum = maximum if isinstance(maximum, int) and maximum >= 0 else None
 
+    if minimum is not None and maximum is not None and minimum > maximum:
+        return 0, "The job has an invalid experience range"
     if minimum is None and maximum is None:
         return EXPERIENCE_WEIGHT, "No experience range is specified"
     if minimum is not None and years < minimum:
@@ -103,7 +101,7 @@ def _score_work_mode(work_mode: Any):
     # CandidateProfile currently has no work-mode preference. Missing preference
     # must remain neutral, so every recognized mode receives the full component.
     label = dict(Job.WorkMode.choices).get(work_mode, "Job work mode")
-    return WORK_MODE_WEIGHT, f"{label} work is compatible; no work-mode preference is specified"
+    return WORK_MODE_WEIGHT, f"{label} work mode is neutral because no candidate preference is stored"
 
 
 def calculate_match(candidate: CandidateProfile, job: Job) -> MatchResult:

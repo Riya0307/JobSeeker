@@ -2,7 +2,7 @@ from django.db import transaction
 from rest_framework import serializers
 
 from apps.candidates.models import CandidateProfile
-from apps.matching.services import normalize_skill
+from apps.jobs.normalization import normalize_skill
 
 from .models import JobAlert, MAX_ALERT_SKILLS
 
