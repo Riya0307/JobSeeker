@@ -14,3 +14,24 @@ export interface PaginatedJobMatches {
   previous: string | null;
   results: JobMatch[];
 }
+
+export interface MatchSkillGap {
+  skill: string;
+  importance: "low" | "medium" | "high";
+  explanation: string;
+}
+
+export interface MatchExplanation {
+  summary: string;
+  strengths: string[];
+  skill_gaps: MatchSkillGap[];
+  experience_alignment: string;
+  application_tips: string[];
+  considerations: string[];
+}
+
+export interface MatchExplanationResponse {
+  status: "generated" | "cached" | "processing" | "unavailable";
+  explanation: MatchExplanation | null;
+  detail: string;
+}

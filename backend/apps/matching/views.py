@@ -4,12 +4,15 @@ from rest_framework.exceptions import NotFound
 from rest_framework.generics import GenericAPIView
 from rest_framework.pagination import PageNumberPagination
 from rest_framework.response import Response
+from rest_framework import status
+from rest_framework.throttling import ScopedRateThrottle
 
 from apps.candidates.models import CandidateProfile
 from apps.jobs.models import SavedJob
 
 from .serializers import MatchResultSerializer
 from .services import available_jobs, calculate_match
+from .gemini import GeminiRateLimited, GeminiUnavailable, get_or_generate_explanation
 
 
 class MatchPagination(PageNumberPagination):
@@ -50,3 +53,33 @@ class MatchedJobDetailView(CandidateMatchMixin, GenericAPIView):
         candidate = self.get_candidate()
         job = get_object_or_404(self.get_jobs(candidate), pk=job_id)
         return Response(self.get_serializer(calculate_match(candidate, job)).data)
+
+
+class MatchExplanationView(CandidateMatchMixin, GenericAPIView):
+    throttle_classes = (ScopedRateThrottle,)
+    throttle_scope = "matching_explanation"
+
+    def post(self, request, job_id):
+        candidate = self.get_candidate()
+        job = get_object_or_404(self.get_jobs(candidate), pk=job_id)
+        match = calculate_match(candidate, job)
+        try:
+            result_status, explanation = get_or_generate_explanation(candidate, job, match)
+        except GeminiRateLimited as exc:
+            return Response(
+                {"status": "unavailable", "explanation": None, "detail": str(exc)},
+                status=status.HTTP_429_TOO_MANY_REQUESTS,
+            )
+        except GeminiUnavailable as exc:
+            return Response(
+                {"status": "unavailable", "explanation": None, "detail": str(exc)},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
+        if result_status == "processing":
+            return Response(
+                {"status": "processing", "explanation": None, "detail": "An explanation is already being generated. Please retry shortly."},
+                status=status.HTTP_202_ACCEPTED,
+            )
+        return Response(
+            {"status": result_status, "explanation": explanation.as_dict(), "detail": ""}
+        )

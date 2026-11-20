@@ -8,6 +8,7 @@ import type { Application } from "../applications/types";
 import * as matchingApi from "../matching/api";
 import MatchReasons from "../matching/MatchReasons";
 import MatchScore from "../matching/MatchScore";
+import AIExplanation from "../matching/AIExplanation";
 import type { JobMatch } from "../matching/types";
 import * as jobsApi from "./api";
 import { formatDate, formatExperience, formatSalary, titleCase } from "./format";
@@ -95,7 +96,7 @@ export default function JobDetailPage() {
           </div>
         </header>
         <div className="p-6 sm:p-8">
-          {matchingLoading ? <div className="mb-8 h-40 animate-pulse rounded-xl bg-white/5" aria-label="Loading your match summary" /> : match && <section className="mb-8 rounded-2xl border border-cyan-400/20 bg-cyan-400/5 p-5"><div className="flex flex-col gap-4 sm:flex-row sm:items-center"><MatchScore score={match.match_score} /><div><h2 className="text-lg font-semibold">Your match for this role</h2><p className="mt-1 text-sm text-slate-400">Based on your current candidate profile.</p></div></div><MatchReasons matchedSkills={match.matched_skills} missingSkills={match.missing_skills} reasons={match.reasons} /></section>}
+          {matchingLoading ? <div className="mb-8 h-40 animate-pulse rounded-xl bg-white/5" aria-label="Loading your match summary" /> : match && <section className="mb-8 rounded-2xl border border-cyan-400/20 bg-cyan-400/5 p-5"><div className="flex flex-col gap-4 sm:flex-row sm:items-center"><MatchScore score={match.match_score} /><div><h2 className="text-lg font-semibold">Your match for this role</h2><p className="mt-1 text-sm text-slate-400">Based on your current candidate profile.</p></div></div><MatchReasons matchedSkills={match.matched_skills} missingSkills={match.missing_skills} reasons={match.reasons} /><AIExplanation jobId={job.id} /></section>}
           <section><h2 className="text-lg font-semibold">Skills</h2><div className="mt-4 flex flex-wrap gap-2">{job.skills.length ? job.skills.map((skill) => <span key={skill} className="rounded-full bg-cyan-400/10 px-3 py-1.5 text-sm text-cyan-200">{skill}</span>) : <span className="text-sm text-slate-500">No skills specified.</span>}</div></section>
           <section className="mt-8 border-t border-white/10 pt-8"><h2 className="text-lg font-semibold">About the role</h2><div className="mt-4 whitespace-pre-wrap text-sm leading-7 text-slate-300">{job.description}</div></section>
         </div>

@@ -117,6 +117,9 @@ REST_FRAMEWORK = {
         "rest_framework.permissions.IsAuthenticated",
     ),
     "EXCEPTION_HANDLER": "config.exceptions.structured_exception_handler",
+    "DEFAULT_THROTTLE_RATES": {
+        "matching_explanation": "10/hour",
+    },
 }
 
 SIMPLE_JWT = {
@@ -152,8 +155,12 @@ JOB_INGESTION_HEALTH_STALE_AFTER_HOURS = 24
 JOB_INGESTION_HIGH_REJECTION_RATE = 0.75
 JOB_INGESTION_STUCK_AFTER_HOURS = 2
 
-# AI configuration (Gemini – functionality not implemented yet)
+# Supplemental Gemini match explanations. Deterministic matching remains authoritative.
 GEMINI_API_KEY = None
+GEMINI_MODEL = "gemini-2.5-flash"
+GEMINI_REQUEST_TIMEOUT = 15
+GEMINI_MAX_OUTPUT_TOKENS = 800
+GEMINI_EXPLANATION_CACHE_TTL = 86400
 
 FRONTEND_URL = None
 
@@ -232,6 +239,13 @@ def configure_from_env(settings: dict) -> None:
     settings["CHANNEL_LAYERS"]["default"]["CONFIG"]["hosts"] = [redis_url]
     settings["CELERY_BROKER_URL"] = redis_url
     settings["CELERY_RESULT_BACKEND"] = redis_url
+    settings["CACHES"] = {
+        "default": {
+            "BACKEND": "django.core.cache.backends.redis.RedisCache",
+            "LOCATION": redis_url,
+            "TIMEOUT": 300,
+        }
+    }
     interval_minutes = _env_bounded_int(
         "JOB_INGEST_ARBEITNOW_INTERVAL_MINUTES", 60, 1, 10080
     )
@@ -261,6 +275,16 @@ def configure_from_env(settings: dict) -> None:
     )
 
     settings["GEMINI_API_KEY"] = os.environ.get("GEMINI_API_KEY", "")
+    settings["GEMINI_MODEL"] = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash").strip()
+    settings["GEMINI_REQUEST_TIMEOUT"] = _env_bounded_int(
+        "GEMINI_REQUEST_TIMEOUT", 15, 1, 60
+    )
+    settings["GEMINI_MAX_OUTPUT_TOKENS"] = _env_bounded_int(
+        "GEMINI_MAX_OUTPUT_TOKENS", 800, 128, 2048
+    )
+    settings["GEMINI_EXPLANATION_CACHE_TTL"] = _env_bounded_int(
+        "GEMINI_EXPLANATION_CACHE_TTL", 86400, 60, 604800
+    )
     settings["FRONTEND_URL"] = os.environ.get("FRONTEND_URL", "http://localhost:5173")
 
     cors_origins = os.environ.get("CORS_ALLOWED_ORIGINS", settings["FRONTEND_URL"])

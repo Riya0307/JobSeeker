@@ -9,6 +9,7 @@ import type { Job } from "../jobs/types";
 import * as matchingApi from "./api";
 import MatchReasons from "./MatchReasons";
 import MatchScore from "./MatchScore";
+import AIExplanation from "./AIExplanation";
 import type { PaginatedJobMatches } from "./types";
 
 export default function MatchingJobsPage() {
@@ -75,6 +76,7 @@ export default function MatchingJobsPage() {
               {data.results.map((match) => (
                 <JobCard key={match.job.id} job={match.job} busy={busyId === match.job.id} onToggleSave={(job) => void toggleSave(job)} detailState={{ fromMatching: true }} headerExtra={<MatchScore score={match.match_score} compact />}>
                   <MatchReasons matchedSkills={match.matched_skills} missingSkills={match.missing_skills} reasons={match.reasons} />
+                  <AIExplanation jobId={match.job.id} />
                 </JobCard>
               ))}
             </div>
