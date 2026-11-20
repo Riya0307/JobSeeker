@@ -1,16 +1,19 @@
 import hashlib
 import json
 import logging
-import socket
 from dataclasses import asdict, dataclass
 from typing import Any
-from urllib.error import HTTPError, URLError
-from urllib.request import Request, urlopen
 
 from django.conf import settings
 from django.core.cache import cache
 
 from apps.candidates.models import CandidateProfile
+from apps.ai.gemini import (
+    GeminiInvalidResponse,
+    GeminiRateLimited,
+    GeminiUnavailable,
+    generate_structured_json,
+)
 from apps.jobs.models import Job
 from apps.jobs.normalization import normalize_skill
 
@@ -22,21 +25,8 @@ PROMPT_VERSION = "match-explanation-v1"
 MAX_INPUT_DESCRIPTION = 4000
 MAX_TEXT = 800
 MAX_ITEMS = 6
-MAX_PROVIDER_BYTES = 256 * 1024
 MAX_INPUT_ITEMS = 50
 MAX_INPUT_VALUE = 255
-
-
-class GeminiUnavailable(Exception):
-    pass
-
-
-class GeminiRateLimited(GeminiUnavailable):
-    pass
-
-
-class GeminiInvalidResponse(GeminiUnavailable):
-    pass
 
 
 @dataclass(frozen=True)
@@ -190,38 +180,12 @@ def _prompt(data: dict) -> str:
 
 
 def request_gemini_explanation(candidate: CandidateProfile, job: Job, match: MatchResult) -> MatchExplanation:
-    api_key = settings.GEMINI_API_KEY
-    if not api_key:
-        raise GeminiUnavailable("Gemini explanations are not configured.")
-    body = {
-        "contents": [{"role": "user", "parts": [{"text": _prompt(_input_data(candidate, job, match))}]}],
-        "generationConfig": {
-            "temperature": 0.2,
-            "maxOutputTokens": settings.GEMINI_MAX_OUTPUT_TOKENS,
-            "responseMimeType": "application/json",
-            "responseSchema": RESPONSE_SCHEMA,
-        },
-    }
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/{settings.GEMINI_MODEL}:generateContent"
-    request = Request(url, data=json.dumps(body).encode(), headers={"Content-Type": "application/json", "x-goog-api-key": api_key}, method="POST")
     try:
-        with urlopen(request, timeout=settings.GEMINI_REQUEST_TIMEOUT) as response:
-            raw_response = response.read(MAX_PROVIDER_BYTES + 1)
-            if len(raw_response) > MAX_PROVIDER_BYTES:
-                raise GeminiInvalidResponse("Gemini returned an invalid explanation.")
-            provider_response = json.loads(raw_response.decode("utf-8"))
-    except HTTPError as exc:
-        logger.warning("Gemini explanation request failed with HTTP status %s", exc.code)
-        if exc.code == 429:
-            raise GeminiRateLimited("Gemini is temporarily rate limited.") from exc
-        raise GeminiUnavailable("Gemini is temporarily unavailable.") from exc
-    except (URLError, socket.timeout, TimeoutError, json.JSONDecodeError) as exc:
-        logger.warning("Gemini explanation request failed: %s", type(exc).__name__)
-        raise GeminiUnavailable("Gemini is temporarily unavailable.") from exc
-    try:
-        text = provider_response["candidates"][0]["content"]["parts"][0]["text"]
-        return validate_explanation(json.loads(text), match.missing_skills)
-    except (KeyError, IndexError, TypeError, json.JSONDecodeError) as exc:
+        value = generate_structured_json(
+            _prompt(_input_data(candidate, job, match)), RESPONSE_SCHEMA
+        )
+        return validate_explanation(value, match.missing_skills)
+    except GeminiInvalidResponse as exc:
         raise GeminiInvalidResponse("Gemini returned an invalid explanation.") from exc
 
 

@@ -101,7 +101,7 @@ def test_successful_structured_response_and_prompt_injection_boundary(user, monk
         captured["timeout"] = timeout
         assert request.headers["X-goog-api-key"] == "secret"
         return FakeResponse(valid_payload())
-    monkeypatch.setattr("apps.matching.gemini.urlopen", fake_urlopen)
+    monkeypatch.setattr("apps.ai.gemini.urlopen", fake_urlopen)
     explanation = request_gemini_explanation(user.candidate_profile, job, match)
     prompt = captured["body"]["contents"][0]["parts"][0]["text"]
     assert explanation.skill_gaps[0].skill == "Docker"
@@ -123,7 +123,7 @@ def test_missing_api_key_is_unavailable(user):
 @override_settings(GEMINI_API_KEY="secret")
 def test_timeout_and_network_errors_are_safe(user, monkeypatch, error):
     job = create_job()
-    monkeypatch.setattr("apps.matching.gemini.urlopen", lambda *args, **kwargs: (_ for _ in ()).throw(error))
+    monkeypatch.setattr("apps.ai.gemini.urlopen", lambda *args, **kwargs: (_ for _ in ()).throw(error))
     with pytest.raises(GeminiUnavailable):
         request_gemini_explanation(user.candidate_profile, job, calculate_match(user.candidate_profile, job))
 
@@ -133,7 +133,7 @@ def test_timeout_and_network_errors_are_safe(user, monkeypatch, error):
 def test_provider_rate_limit_is_distinct(user, monkeypatch):
     job = create_job()
     error = HTTPError("url", 429, "limited", {}, BytesIO())
-    monkeypatch.setattr("apps.matching.gemini.urlopen", lambda *args, **kwargs: (_ for _ in ()).throw(error))
+    monkeypatch.setattr("apps.ai.gemini.urlopen", lambda *args, **kwargs: (_ for _ in ()).throw(error))
     with pytest.raises(GeminiRateLimited):
         request_gemini_explanation(user.candidate_profile, job, calculate_match(user.candidate_profile, job))
 
@@ -143,12 +143,12 @@ def test_provider_rate_limit_is_distinct(user, monkeypatch):
 def test_provider_error_and_malformed_json_are_safe(user, monkeypatch):
     job = create_job(); match = calculate_match(user.candidate_profile, job)
     error = HTTPError("url", 500, "failed", {}, BytesIO())
-    monkeypatch.setattr("apps.matching.gemini.urlopen", lambda *args, **kwargs: (_ for _ in ()).throw(error))
+    monkeypatch.setattr("apps.ai.gemini.urlopen", lambda *args, **kwargs: (_ for _ in ()).throw(error))
     with pytest.raises(GeminiUnavailable):
         request_gemini_explanation(user.candidate_profile, job, match)
     class BadResponse(FakeResponse):
         def read(self, _size=-1): return b"not-json"
-    monkeypatch.setattr("apps.matching.gemini.urlopen", lambda *args, **kwargs: BadResponse({}))
+    monkeypatch.setattr("apps.ai.gemini.urlopen", lambda *args, **kwargs: BadResponse({}))
     with pytest.raises(GeminiUnavailable):
         request_gemini_explanation(user.candidate_profile, job, match)
 

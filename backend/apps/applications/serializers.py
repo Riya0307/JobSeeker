@@ -112,3 +112,47 @@ class ApplicationCreateSerializer(serializers.Serializer):
         validated_data.pop("job_id")
         validated_data.pop("resume_id", None)
         return Application.objects.create(**validated_data)
+
+
+class CoverLetterGenerateSerializer(serializers.Serializer):
+    job_id = serializers.IntegerField(min_value=1)
+    tone = serializers.ChoiceField(
+        choices=("professional", "warm", "concise", "enthusiastic"),
+        default="professional",
+    )
+    instructions = serializers.CharField(
+        required=False,
+        allow_blank=True,
+        trim_whitespace=True,
+        max_length=1500,
+        default="",
+    )
+
+    SERVER_FIELDS = {
+        "candidate", "candidate_id", "user", "user_id", "profile", "profile_id",
+        "job", "job_title", "job_description", "skills", "years_of_experience",
+    }
+
+    def validate(self, attrs):
+        supplied = self.SERVER_FIELDS.intersection(self.initial_data)
+        if supplied:
+            raise serializers.ValidationError(
+                {field: "This value is derived by the server." for field in supplied}
+            )
+        try:
+            candidate = CandidateProfile.objects.get(user=self.context["request"].user)
+        except CandidateProfile.DoesNotExist as exc:
+            raise serializers.ValidationError(
+                {"candidate": "Create your candidate profile first."}
+            ) from exc
+        try:
+            job = Job.objects.get(pk=attrs["job_id"])
+        except Job.DoesNotExist as exc:
+            raise serializers.ValidationError({"job_id": "Job not found."}) from exc
+        if not job.is_active or (job.expires_at is not None and job.expires_at <= timezone.now()):
+            raise serializers.ValidationError(
+                {"job_id": "This job is not accepting applications."}
+            )
+        attrs["candidate"] = candidate
+        attrs["job"] = job
+        return attrs

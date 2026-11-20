@@ -49,3 +49,11 @@ export interface CreateApplicationPayload {
   resume_id?: number;
   cover_letter?: string;
 }
+
+export type CoverLetterTone = "professional" | "warm" | "concise" | "enthusiastic";
+
+export interface CoverLetterGenerationResponse {
+  status: "generated" | "processing" | "unavailable";
+  cover_letter: string | null;
+  detail: string;
+}

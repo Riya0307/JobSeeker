@@ -119,6 +119,7 @@ REST_FRAMEWORK = {
     "EXCEPTION_HANDLER": "config.exceptions.structured_exception_handler",
     "DEFAULT_THROTTLE_RATES": {
         "matching_explanation": "10/hour",
+        "cover_letter_generation": "5/hour",
     },
 }
 

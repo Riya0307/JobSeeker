@@ -1,5 +1,5 @@
 import apiClient from "../../api/client";
-import type { Application, CreateApplicationPayload, PaginatedApplications } from "./types";
+import type { Application, CoverLetterGenerationResponse, CoverLetterTone, CreateApplicationPayload, PaginatedApplications } from "./types";
 
 export async function listApplications(page = 1, pageSize = 10): Promise<PaginatedApplications> {
   const response = await apiClient.get<PaginatedApplications>("/applications/", {
@@ -32,4 +32,13 @@ export async function findApplicationForJob(jobId: number): Promise<Application 
     if (!result.next) return null;
     page += 1;
   }
+}
+
+export async function generateCoverLetter(jobId: number, tone: CoverLetterTone, instructions: string): Promise<CoverLetterGenerationResponse> {
+  const response = await apiClient.post<CoverLetterGenerationResponse>("/applications/cover-letter/generate/", {
+    job_id: jobId,
+    tone,
+    instructions,
+  });
+  return response.data;
 }
