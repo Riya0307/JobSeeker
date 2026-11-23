@@ -15,10 +15,10 @@ export default function MatchScore({ score, compact = false }: MatchScoreProps) 
   return (
     <div
       aria-label={`${score}% match, ${label}`}
-      className={`shrink-0 rounded-xl border border-cyan-400/25 bg-cyan-400/10 text-center ${compact ? "px-3 py-2" : "px-4 py-3"}`}
+      className={`ws-badge shrink-0 flex-col text-center ${compact ? "gap-0 px-2 py-1" : "gap-0 px-3 py-2"}`}
     >
-      <strong className={`${compact ? "text-xl" : "text-2xl"} block text-cyan-200`}>{score}%</strong>
-      <span className="mt-0.5 block text-xs font-medium text-cyan-300">{compact ? "Match" : label}</span>
+      <strong className={`${compact ? "text-base" : "text-xl"} tabular-nums`}>{score}%</strong>
+      <span className="text-xs font-medium">{compact ? "Match" : label}</span>
     </div>
   );
 }

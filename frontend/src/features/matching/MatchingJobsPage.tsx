@@ -1,9 +1,10 @@
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import axios from "axios";
-import { Link, useSearchParams } from "react-router-dom";
+import { Link, useLocation, useSearchParams } from "react-router-dom";
 import { getApiError } from "../auth/formUtils";
 import * as jobsApi from "../jobs/api";
 import JobCard from "../jobs/JobCard";
+import { JobListEmpty, JobListSkeleton, SectionError } from "../jobs/JobListState";
 import Pagination from "../jobs/Pagination";
 import type { Job } from "../jobs/types";
 import * as matchingApi from "./api";
@@ -13,12 +14,14 @@ import AIExplanation from "./AIExplanation";
 import type { PaginatedJobMatches } from "./types";
 
 export default function MatchingJobsPage() {
+  const location = useLocation();
   const [params, setParams] = useSearchParams();
   const requestedPage = Number(params.get("page") ?? 1);
-  const page = Number.isInteger(requestedPage) && requestedPage > 0 ? requestedPage : 1;
+  const page = Number.isSafeInteger(requestedPage) && requestedPage > 0 ? requestedPage : 1;
   const [data, setData] = useState<PaginatedJobMatches | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [saveError, setSaveError] = useState("");
   const [busyId, setBusyId] = useState<number | null>(null);
   const [requestVersion, setRequestVersion] = useState(0);
 
@@ -28,22 +31,26 @@ export default function MatchingJobsPage() {
     }
   }, [page, params, setParams]);
 
-  const load = useCallback(async () => {
-    setLoading(true); setError("");
-    try { setData(await matchingApi.listJobMatches(page)); }
-    catch (reason) {
+  useEffect(() => {
+    let active = true;
+    setLoading(true);
+    setError("");
+    matchingApi.listJobMatches(page).then((result) => {
+      if (active) setData(result);
+    }).catch((reason: unknown) => {
+      if (!active) return;
       if (axios.isAxiosError(reason) && reason.response?.status === 404 && page > 1) {
-        setParams({}, { replace: true }); return;
+        setParams({}, { replace: true });
+      } else {
+        setError(`We couldn't load your recommendations. ${getApiError(reason)}`);
       }
-      setError(`We couldn't load your recommendations. ${getApiError(reason)}`);
-    }
-    finally { setLoading(false); }
+    }).finally(() => { if (active) setLoading(false); });
+    return () => { active = false; };
   }, [page, requestVersion, setParams]);
 
-  useEffect(() => { void load(); }, [load]);
-
   async function toggleSave(job: Job) {
-    setBusyId(job.id); setError("");
+    if (busyId !== null) return;
+    setBusyId(job.id); setSaveError("");
     try {
       if (job.is_saved) await jobsApi.unsaveJob(job.id); else await jobsApi.saveJob(job.id);
       setData((current) => current ? {
@@ -52,39 +59,39 @@ export default function MatchingJobsPage() {
           ? { ...match, job: { ...match.job, is_saved: !job.is_saved } }
           : match),
       } : current);
-    } catch (reason) { setError(getApiError(reason)); }
+    } catch (reason) { setSaveError(getApiError(reason)); }
     finally { setBusyId(null); }
   }
 
   return (
-    <main className="mx-auto max-w-6xl px-4 py-10 sm:px-6">
-      <p className="text-xs font-semibold uppercase tracking-[0.2em] text-cyan-400">Personalized recommendations</p>
-      <h1 className="mt-3 text-3xl font-semibold tracking-tight sm:text-4xl">Jobs for You</h1>
-      <p className="mt-2 max-w-2xl text-slate-400">Jobs ranked by how well they match your profile and skills.</p>
-
-      {error && <div role="alert" className="mt-6 rounded-xl border border-red-400/20 bg-red-400/10 p-4 text-sm text-red-200"><p>{error}</p><button onClick={() => setRequestVersion((version) => version + 1)} className="mt-3 rounded-lg border border-red-300/30 px-4 py-2 font-semibold hover:bg-red-300/10">Try again</button></div>}
-
-      <section className="mt-8" aria-live="polite">
-        {loading ? (
-          <div className="grid gap-5" aria-label="Loading job matches">
-            {[1, 2, 3].map((item) => <div key={item} className="h-96 animate-pulse rounded-2xl border border-white/5 bg-slate-900/70" />)}
-          </div>
-        ) : data?.results.length ? (
-          <>
-            <p className="mb-4 text-sm text-slate-400">{data.count} ranked {data.count === 1 ? "match" : "matches"}</p>
-            <div className="grid gap-5">
-              {data.results.map((match) => (
-                <JobCard key={match.job.id} job={match.job} busy={busyId === match.job.id} onToggleSave={(job) => void toggleSave(job)} detailState={{ fromMatching: true }} headerExtra={<MatchScore score={match.match_score} compact />}>
-                  <MatchReasons matchedSkills={match.matched_skills} missingSkills={match.missing_skills} reasons={match.reasons} />
-                  <AIExplanation jobId={match.job.id} />
-                </JobCard>
-              ))}
-            </div>
-            <Pagination page={page} count={data.count} onChange={(next) => { setParams(next > 1 ? { page: String(next) } : {}); window.scrollTo({ top: 0, behavior: "smooth" }); }} />
-          </>
-        ) : (
-          <div className="rounded-2xl border border-dashed border-slate-700 px-6 py-16 text-center"><h2 className="text-lg font-semibold">No matches yet</h2><p className="mx-auto mt-2 max-w-md text-sm text-slate-400">Complete your candidate profile and add more skills to improve your recommendations.</p><div className="mt-6 flex flex-col justify-center gap-3 sm:flex-row"><Link to="/profile" className="rounded-xl bg-cyan-400 px-5 py-3 text-sm font-semibold text-slate-950 hover:bg-cyan-300">Complete profile</Link><Link to="/jobs" className="rounded-xl border border-slate-700 px-5 py-3 text-sm font-semibold text-slate-200 hover:border-slate-500">Browse all jobs</Link></div></div>
-        )}
+    <main className="ws-page">
+      <header>
+        <h1 className="ws-title">Recommended jobs</h1>
+        <p className="ws-muted mt-2 text-sm sm:text-base">Explore roles ranked by how well they fit your profile and skills.</p>
+      </header>
+      <section aria-label="Ranked job matches" className="mt-5">
+        {!loading && !error && data && <p role="status" className="ws-muted mb-3 text-sm">{data.count.toLocaleString()} ranked {data.count === 1 ? "match" : "matches"}</p>}
+        {saveError && <p role="alert" className="ws-alert mb-3">{saveError}</p>}
+        {loading ? <JobListSkeleton label="Loading matches" /> :
+          error ? <SectionError message={error} onRetry={() => setRequestVersion((value) => value + 1)} /> :
+          data?.results.length ? (
+            <>
+              <div className="grid gap-3">
+                {data.results.map((match) => (
+                  <JobCard key={match.job.id} job={match.job} disabled={busyId !== null}
+                    onToggleSave={(job) => void toggleSave(job)} headerExtra={<MatchScore score={match.match_score} compact />}
+                    detailState={{ fromMatching: true, returnTo: location.pathname + location.search }}>
+                    <MatchReasons matchedSkills={match.matched_skills} missingSkills={match.missing_skills} reasons={match.reasons} />
+                    <AIExplanation jobId={match.job.id} />
+                  </JobCard>
+                ))}
+              </div>
+              <Pagination light page={page} count={data.count} onChange={(next) => {
+                setParams(next > 1 ? { page: String(next) } : {});
+                window.scrollTo(0, 0);
+              }} />
+            </>
+          ) : <JobListEmpty title="No matches yet"><Link to="/profile" className="ws-link">Update your profile and skills</Link> or <Link to="/jobs" className="ws-link">browse all jobs</Link>.</JobListEmpty>}
       </section>
     </main>
   );

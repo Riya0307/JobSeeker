@@ -1,3 +1,5 @@
+import { useId } from "react";
+
 interface MatchReasonsProps {
   matchedSkills: string[];
   missingSkills: string[];
@@ -5,27 +7,29 @@ interface MatchReasonsProps {
 }
 
 export default function MatchReasons({ matchedSkills, missingSkills, reasons }: MatchReasonsProps) {
+  const id = useId();
   return (
-    <div className="mt-6 grid gap-5 border-t border-white/10 pt-5 lg:grid-cols-3">
-      <section aria-labelledby="matched-skills-heading">
-        <h3 id="matched-skills-heading" className="text-sm font-semibold text-slate-200">Matched skills ({matchedSkills.length})</h3>
-        {matchedSkills.length ? (
-          <ul className="mt-3 flex flex-wrap gap-2">
-            {matchedSkills.map((skill) => <li key={skill} className="rounded-full bg-emerald-400/10 px-3 py-1 text-xs text-emerald-200">✓ {skill}</li>)}
+    <div className="ws-divider mt-4 grid gap-4 border-t pt-4 sm:grid-cols-2">
+      {[
+        { key: "matched", title: "Matched skills", skills: matchedSkills, tone: "success", empty: "No required skills matched yet." },
+        { key: "missing", title: "Missing skills", skills: missingSkills, tone: "warning", empty: "No missing skills reported." },
+      ].map(({ key, title, skills, tone, empty }) => (
+        <section key={key} className="min-w-0" aria-labelledby={`${id}-${key}`}>
+          <h3 id={`${id}-${key}`} className="text-sm font-semibold">{title} ({skills.length})</h3>
+          {skills.length ? (
+            <ul className="mt-2 flex flex-wrap gap-2">
+              {skills.map((skill) => <li key={skill} className="ws-badge max-w-full wrap-anywhere" data-tone={tone}>{skill}</li>)}
+            </ul>
+          ) : <p className="ws-muted mt-1 text-sm">{empty}</p>}
+        </section>
+      ))}
+      <section className="min-w-0 sm:col-span-2" aria-labelledby={`${id}-reasons`}>
+        <h3 id={`${id}-reasons`} className="text-sm font-semibold">Why this matches</h3>
+        {reasons.length ? (
+          <ul className="ws-muted mt-2 list-disc space-y-1 pl-5 text-sm">
+            {reasons.map((reason, index) => <li key={`${reason}-${index}`} className="wrap-anywhere">{reason}</li>)}
           </ul>
-        ) : <p className="mt-2 text-sm text-slate-500">No required skills matched yet.</p>}
-      </section>
-      <section aria-labelledby="missing-skills-heading">
-        <h3 id="missing-skills-heading" className="text-sm font-semibold text-slate-200">Missing skills ({missingSkills.length})</h3>
-        {missingSkills.length ? (
-          <ul className="mt-3 flex flex-wrap gap-2">
-            {missingSkills.map((skill) => <li key={skill} className="rounded-full bg-amber-400/10 px-3 py-1 text-xs text-amber-200">+ {skill}</li>)}
-          </ul>
-        ) : <p className="mt-2 text-sm text-emerald-300">All required skills matched.</p>}
-      </section>
-      <section aria-labelledby="match-reasons-heading">
-        <h3 id="match-reasons-heading" className="text-sm font-semibold text-slate-200">Why this matches</h3>
-        {reasons.length ? <ul className="mt-3 space-y-2 text-sm text-slate-400">{reasons.map((reason, index) => <li key={`${reason}-${index}`} className="flex gap-2"><span aria-hidden="true" className="text-cyan-400">•</span><span>{reason}</span></li>)}</ul> : <p className="mt-2 text-sm text-slate-500">No matching reasons were provided.</p>}
+        ) : <p className="ws-muted mt-1 text-sm">No matching reasons were provided.</p>}
       </section>
     </div>
   );

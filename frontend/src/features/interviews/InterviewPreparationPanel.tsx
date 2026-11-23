@@ -1,5 +1,6 @@
 import { useRef, useState, type ReactNode } from "react";
 import axios from "axios";
+import WorkspaceIcon from "../../components/WorkspaceIcon";
 import { getApiError } from "../auth/formUtils";
 import { prepareInterview } from "./api";
 import type { InterviewPreparation } from "./types";
@@ -7,9 +8,9 @@ import type { InterviewPreparation } from "./types";
 function PreparationSection({ title, items }: { title: string; items: ReactNode[] }) {
   if (!items.length) return null;
   return (
-    <section className="rounded-xl border border-white/10 p-4">
-      <h3 className="font-semibold text-slate-100">{title}</h3>
-      <ul className="mt-3 space-y-3 text-sm leading-relaxed text-slate-300">
+    <section className="ws-card min-w-0 p-4">
+      <h3 className="font-semibold">{title}</h3>
+      <ul className="ws-muted mt-3 space-y-3 wrap-anywhere text-sm leading-relaxed">
         {items.map((item, index) => <li key={index}>{item}</li>)}
       </ul>
     </section>
@@ -20,6 +21,7 @@ export default function InterviewPreparationPanel({ interviewId }: { interviewId
   const inFlight = useRef(false);
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState("");
+  const [failed, setFailed] = useState(false);
   const [preparation, setPreparation] = useState<InterviewPreparation | null>(null);
 
   async function generate() {
@@ -27,11 +29,16 @@ export default function InterviewPreparationPanel({ interviewId }: { interviewId
     inFlight.current = true;
     setLoading(true);
     setMessage("");
+    setFailed(false);
     try {
       const response = await prepareInterview(interviewId);
       if (response.status === "generated") setPreparation(response.preparation);
-      else setMessage(response.detail);
+      else {
+        setFailed(response.status === "unavailable");
+        setMessage(response.detail || "Preparation is not ready. Try again shortly.");
+      }
     } catch (error) {
+      setFailed(true);
       const body = axios.isAxiosError<unknown>(error) ? error.response?.data : null;
       setMessage(
         body && typeof body === "object" && "detail" in body && typeof body.detail === "string"
@@ -45,9 +52,9 @@ export default function InterviewPreparationPanel({ interviewId }: { interviewId
   }
 
   return (
-    <section aria-labelledby="interview-preparation-title" className="border-t border-white/10 pt-7">
-      <h2 id="interview-preparation-title" className="text-lg font-semibold">Interview preparation</h2>
-      <p className="mt-2 text-sm text-slate-400">
+    <section aria-labelledby="interview-preparation-title" className="ws-card p-4 sm:p-6">
+      <h2 id="interview-preparation-title" className="ws-heading flex items-center gap-2"><WorkspaceIcon name="spark" size={19} /> Interview preparation</h2>
+      <p className="ws-muted mt-2 max-w-[72ch] text-sm">
         Gemini uses saved profile and role details to suggest material for practice.
         AI-generated suggestions can be inaccurate, and actual interview questions may differ.
       </p>
@@ -56,17 +63,18 @@ export default function InterviewPreparationPanel({ interviewId }: { interviewId
           type="button"
           disabled={loading}
           onClick={() => void generate()}
-          className="mt-4 rounded-xl border border-cyan-400/40 px-5 py-3 text-sm font-semibold text-cyan-200 hover:bg-cyan-400/10 disabled:opacity-50"
+          className="ws-button ws-button-primary mt-4"
         >
           {loading ? "Preparing…" : message ? "Try again" : "Prepare for this interview"}
         </button>
       )}
-      <p role="status" className="mt-2 text-sm text-slate-300">
-        {loading ? "Generating your practice guide." : message || (preparation ? "Practice guide ready." : "")}
-      </p>
+      {failed ? <p role="alert" className="ws-alert mt-3 wrap-anywhere">{message}</p> :
+        <p role="status" className="ws-muted mt-2 text-sm">
+          {loading ? "Generating your practice guide." : message || (preparation ? "Practice guide ready." : "")}
+        </p>}
       {preparation && (
-        <div className="mt-4 space-y-4 break-words">
-          <p className="text-sm leading-relaxed text-slate-300">{preparation.overview}</p>
+        <div className="mt-4 space-y-4 wrap-anywhere">
+          <p className="ws-muted max-w-[72ch] text-sm leading-relaxed">{preparation.overview}</p>
           <div className="grid gap-4 sm:grid-cols-2">
             <PreparationSection title="Technical topics" items={preparation.technical_topics.map(
               ({ topic, reason, priority }) => <><strong>{topic}</strong> · {priority} priority<p>{reason}</p></>,
@@ -85,8 +93,8 @@ export default function InterviewPreparationPanel({ interviewId }: { interviewId
             <PreparationSection title="Questions to ask" items={preparation.questions_to_ask} />
             <PreparationSection title="Preparation checklist" items={preparation.preparation_checklist.map(
               (item) => (
-                <label className="flex items-start gap-3">
-                  <input type="checkbox" className="mt-1 h-4 w-4 shrink-0 accent-cyan-400" />
+                <label className="flex min-h-10 cursor-pointer items-start gap-3 py-1">
+                  <input type="checkbox" className="mt-1 h-4 w-4 shrink-0 accent-[var(--ws-accent)]" />
                   <span>{item}</span>
                 </label>
               ),

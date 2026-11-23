@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useState } from "react";
 import axios from "axios";
 import { Link, useSearchParams } from "react-router-dom";
-import { getApiError, inputClass } from "../auth/formUtils";
+import { getApiError } from "../auth/formUtils";
+import { EmptyState, RowsSkeleton, SectionError } from "../../components/dashboard/DashboardStates";
+import { interviewStatusLabel } from "./format";
 import Pagination from "../jobs/Pagination";
 import * as interviewsApi from "./api";
 import InterviewCard from "./InterviewCard";
@@ -60,14 +62,46 @@ export default function InterviewsPage() {
     if (nextStatus) next.set("status", nextStatus);
     setParams(next);
   }
-  function goToPage(nextPage: number) { const next = new URLSearchParams(params); next.set("page", String(nextPage)); setParams(next); window.scrollTo({ top: 0, behavior: "smooth" }); }
+  function goToPage(nextPage: number) { const next = new URLSearchParams(params); if (nextPage > 1) next.set("page", String(nextPage)); else next.delete("page"); setParams(next); window.scrollTo({ top: 0, behavior: "smooth" }); }
 
   return (
-    <main className="mx-auto max-w-6xl px-4 py-10 sm:px-6">
-      <p className="text-xs font-semibold uppercase tracking-[0.2em] text-cyan-400">Interview schedule</p><h1 className="mt-3 text-3xl font-semibold tracking-tight sm:text-4xl">Your interviews</h1><p className="mt-2 text-slate-400">Review scheduled rounds and manage their candidate-facing status.</p>
-      <section className="mt-8 rounded-2xl border border-white/10 bg-slate-900/60 p-5" aria-label="Interview filters"><div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between"><div><span className="block text-sm font-medium text-slate-300">Schedule</span><div className="mt-2 flex flex-wrap gap-2">{(["all", "upcoming", "past"] as TimeFilter[]).map((item) => <button key={item} onClick={() => setFilter(item)} className={`rounded-lg px-4 py-2 text-sm font-semibold capitalize ${timeFilter === item ? "bg-cyan-400 text-slate-950" : "border border-slate-700 text-slate-300 hover:border-slate-500"}`}>{item}</button>)}</div></div><label className="text-sm text-slate-300 sm:w-56">Status<select className={inputClass} value={status} onChange={(event) => setFilter(timeFilter, event.target.value as InterviewStatus | "")}><option value="">All statuses</option>{statuses.map((item) => <option key={item} value={item}>{item.replace("_", " ")}</option>)}</select></label></div></section>
-      {error && <div role="alert" className="mt-6 rounded-xl border border-red-400/20 bg-red-400/10 p-4 text-sm text-red-200"><p>We couldn't load your interviews. {error}</p><button onClick={() => setRetry((value) => value + 1)} className="mt-3 rounded-lg border border-red-300/30 px-4 py-2 font-semibold">Try again</button></div>}
-      <section className="mt-8" aria-live="polite">{loading ? <div className="grid gap-5" aria-label="Loading interviews">{[1, 2, 3].map((item) => <div key={item} className="h-72 animate-pulse rounded-2xl bg-slate-900/70" />)}</div> : data?.results.length ? <><p className="mb-4 text-sm text-slate-400">{data.count} {data.count === 1 ? "interview" : "interviews"}</p><div className="grid gap-5">{data.results.map((interview) => <InterviewCard key={interview.id} interview={interview} />)}</div><Pagination page={page} count={data.count} ariaLabel="Interview pages" onChange={goToPage} /></> : <div className="rounded-2xl border border-dashed border-slate-700 px-6 py-16 text-center"><h2 className="text-lg font-semibold">No interviews found</h2><p className="mt-2 text-sm text-slate-400">There are no interviews matching the selected filters.</p>{timeFilter !== "all" || status ? <button onClick={() => setFilter("all", "")} className="mt-5 text-sm font-semibold text-cyan-300">Clear filters</button> : <Link to="/applications" className="mt-5 inline-block text-sm font-semibold text-cyan-300">View applications</Link>}</div>}</section>
+    <main className="ws-page">
+      <header>
+        <h1 className="ws-title">Your interviews</h1>
+        <p className="ws-muted mt-2 text-sm sm:text-base">Review interview rounds, schedules, and preparation.</p>
+      </header>
+      <section className="ws-card mt-5 flex flex-wrap items-end justify-between gap-4 p-4" aria-label="Interview filters">
+        <fieldset className="min-w-0">
+          <legend className="mb-2 text-sm font-semibold">Scheduled date</legend>
+          <div className="flex flex-wrap gap-2">
+            {(["all", "upcoming", "past"] as const).map((item) => (
+              <button key={item} type="button" aria-pressed={timeFilter === item}
+                className={`ws-button capitalize ${timeFilter === item ? "ws-button-primary" : ""}`} onClick={() => setFilter(item)}>{item}</button>
+            ))}
+          </div>
+        </fieldset>
+        <label className="w-full text-sm font-semibold sm:w-48">Status
+          <select className="ws-control mt-2" value={status} onChange={(event) => setFilter(timeFilter, event.target.value as InterviewStatus | "")}>
+            <option value="">All statuses</option>
+            {statuses.map((item) => <option key={item} value={item}>{interviewStatusLabel(item)}</option>)}
+          </select>
+        </label>
+      </section>
+      <section className="mt-5" aria-label="Interview results">
+        {loading ? <div className="ws-card px-4"><RowsSkeleton label="Loading interviews" /></div> :
+          error ? <SectionError message={error} onRetry={() => setRetry((value) => value + 1)} /> :
+          data?.results.length ? (
+            <>
+              <p role="status" className="ws-muted mb-3 text-sm">{data.count.toLocaleString()} {data.count === 1 ? "interview" : "interviews"}</p>
+              <div className="grid gap-3">{data.results.map((interview) => <InterviewCard key={interview.id} interview={interview} />)}</div>
+              <Pagination light page={page} count={data.count} ariaLabel="Interview pages" onChange={goToPage} />
+            </>
+          ) : timeFilter !== "all" || status ? (
+            <EmptyState title="No interviews match these filters">
+              <button type="button" className="ws-link min-h-10" onClick={() => setFilter("all", "")}>Clear filters</button>
+            </EmptyState>
+          ) : <EmptyState title="No interviews yet"><Link to="/applications" className="ws-link">View your applications</Link>.</EmptyState>}
+      </section>
     </main>
   );
 }

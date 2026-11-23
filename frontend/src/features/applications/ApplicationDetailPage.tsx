@@ -1,15 +1,19 @@
 import { useCallback, useEffect, useState } from "react";
 import { Link, useLocation, useParams } from "react-router-dom";
+import { RowsSkeleton, SectionError } from "../../components/dashboard/DashboardStates";
 import { getApiError } from "../auth/formUtils";
 import { formatDate, titleCase } from "../jobs/format";
 import * as applicationsApi from "./api";
-import { applicationStatusClass, applicationStatusLabel, formatFileSize } from "./format";
+import { applicationStatusTone, applicationStatusLabel, formatFileSize } from "./format";
 import type { Application } from "./types";
 
 export default function ApplicationDetailPage() {
   const { id } = useParams();
+  return <ApplicationDetails key={id} applicationId={Number(id)} />;
+}
+
+function ApplicationDetails({ applicationId }: { applicationId: number }) {
   const location = useLocation();
-  const applicationId = Number(id);
   const [application, setApplication] = useState<Application | null>(null);
   const [loading, setLoading] = useState(true);
   const [withdrawing, setWithdrawing] = useState(false);
@@ -34,21 +38,54 @@ export default function ApplicationDetailPage() {
     finally { setWithdrawing(false); }
   }
 
-  if (loading) return <main className="mx-auto max-w-4xl px-4 py-12 sm:px-6"><div className="h-96 animate-pulse rounded-2xl bg-slate-900/70" aria-label="Loading application details" /></main>;
-  if (!application) return <main className="mx-auto max-w-4xl px-4 py-12 sm:px-6"><div role="alert" className="rounded-2xl border border-red-400/20 bg-red-400/10 p-6 text-red-200"><h1 className="text-xl font-semibold">Unable to load application</h1><p className="mt-2 text-sm">{error}</p><button onClick={() => setRetry((value) => value + 1)} className="mt-4 rounded-lg border border-red-300/30 px-4 py-2 text-sm font-semibold">Try again</button></div><Link to="/applications" className="mt-6 inline-block text-sm font-semibold text-cyan-300">← Back to applications</Link></main>;
-
   return (
-    <main className="mx-auto max-w-4xl px-4 py-10 sm:px-6">
-      <Link to="/applications" className="text-sm font-medium text-slate-400 hover:text-cyan-300">← Back to applications</Link>
-      {success && <div role="status" className="mt-5 rounded-xl border border-emerald-400/20 bg-emerald-400/10 px-4 py-3 text-sm text-emerald-200">{success}</div>}
-      {error && <div role="alert" className="mt-5 rounded-xl border border-red-400/20 bg-red-400/10 px-4 py-3 text-sm text-red-200">{error}</div>}
-      <article className="mt-6 overflow-hidden rounded-2xl border border-white/10 bg-slate-900/60">
-        <header className="border-b border-white/10 p-6 sm:p-8"><div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between"><div><p className="text-sm font-semibold text-cyan-300">{application.job.company_name}</p><h1 className="mt-2 text-3xl font-semibold tracking-tight">{application.job.title}</h1><p className="mt-3 text-sm text-slate-400">{application.job.location} · {titleCase(application.job.work_mode)} · {titleCase(application.job.employment_type)}</p></div><span className={`w-fit rounded-full border px-3 py-1 text-sm font-semibold ${applicationStatusClass(application.status)}`}>{applicationStatusLabel(application.status)}</span></div><div className="mt-6 flex flex-col gap-3 sm:flex-row"><Link to={`/jobs/${application.job.id}`} className="rounded-xl border border-slate-700 px-5 py-3 text-center text-sm font-semibold text-slate-200 hover:border-slate-500">View job</Link>{application.status === "applied" && <button disabled={withdrawing} onClick={() => void withdraw()} className="rounded-xl border border-red-400/25 px-5 py-3 text-sm font-semibold text-red-200 hover:bg-red-400/10 disabled:opacity-50">{withdrawing ? "Withdrawing..." : "Withdraw application"}</button>}</div></header>
-        <div className="space-y-8 p-6 sm:p-8"><dl className="grid gap-5 sm:grid-cols-3"><div><dt className="text-xs uppercase tracking-wider text-slate-500">Applied</dt><dd className="mt-1 text-sm text-slate-200">{formatDate(application.applied_at)}</dd></div><div><dt className="text-xs uppercase tracking-wider text-slate-500">Last updated</dt><dd className="mt-1 text-sm text-slate-200">{formatDate(application.updated_at)}</dd></div>{application.withdrawn_at && <div><dt className="text-xs uppercase tracking-wider text-slate-500">Withdrawn</dt><dd className="mt-1 text-sm text-slate-200">{formatDate(application.withdrawn_at)}</dd></div>}</dl>
-          <section className="border-t border-white/10 pt-7"><h2 className="text-lg font-semibold">Selected resume</h2><div className="mt-4 rounded-xl bg-white/5 p-4"><div className="flex flex-wrap items-center justify-between gap-2"><div><p className="font-medium">{application.resume.title}</p><p className="mt-1 text-sm text-slate-400">{application.resume.file_name} · {formatFileSize(application.resume.file_size)}</p></div>{application.resume.is_primary && <span className="rounded-full bg-cyan-400/10 px-3 py-1 text-xs font-medium text-cyan-200">Primary</span>}</div></div></section>
-          <section className="border-t border-white/10 pt-7"><h2 className="text-lg font-semibold">Cover letter</h2>{application.cover_letter ? <p className="mt-4 whitespace-pre-wrap text-sm leading-7 text-slate-300">{application.cover_letter}</p> : <p className="mt-3 text-sm text-slate-500">No cover letter was included.</p>}</section>
-        </div>
-      </article>
+    <main className="ws-page">
+      <Link to="/applications" className="ws-link mb-4 inline-flex min-h-10 items-center text-sm">← Back to applications</Link>
+      {success && <p role="status" className="ws-notice mb-4">{success}</p>}
+      {loading ? <div className="ws-card px-4"><RowsSkeleton label="Loading application details" /></div> :
+        !application ? <SectionError message={error || "Unable to load application."} onRetry={() => setRetry((value) => value + 1)} /> : (
+          <article className="grid gap-4">
+            {error && <p role="alert" className="ws-alert">{error}</p>}
+            <header className="ws-card p-4 sm:p-6">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div className="min-w-0 flex-[1_1_16rem]">
+                  <p className="ws-muted mb-1 wrap-anywhere text-sm font-semibold">{application.job.company_name}</p>
+                  <h1 className="ws-title wrap-anywhere">{application.job.title}</h1>
+                  <p className="ws-muted mt-2 wrap-anywhere text-sm">{application.job.location} · {titleCase(application.job.work_mode)} · {titleCase(application.job.employment_type)}</p>
+                </div>
+                <span className="ws-badge" data-tone={applicationStatusTone(application.status)}>{applicationStatusLabel(application.status)}</span>
+              </div>
+              <div className="mt-4 flex flex-wrap gap-2">
+                <Link to={`/jobs/${application.job.id}`} className="ws-button">View job</Link>
+                {application.status === "applied" && <button type="button" className="ws-button ws-button-danger" disabled={withdrawing}
+                  onClick={() => void withdraw()}>{withdrawing ? "Withdrawing…" : "Withdraw application"}</button>}
+              </div>
+            </header>
+
+            <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(16rem,.65fr)]">
+              <section className="ws-card p-4 sm:p-6">
+                <h2 className="ws-heading">Cover letter</h2>
+                <p className="ws-muted mt-3 max-w-[72ch] whitespace-pre-wrap wrap-anywhere text-sm leading-7">{application.cover_letter || "No cover letter was included."}</p>
+              </section>
+              <div className="grid min-w-0 gap-4">
+                <section className="ws-card p-4 sm:p-5">
+                  <h2 className="ws-heading">Submitted resume</h2>
+                  <p className="mt-2 wrap-anywhere text-sm font-semibold">{application.resume.title}</p>
+                  <p className="ws-muted mt-1 wrap-anywhere text-sm">{application.resume.file_name} · {formatFileSize(application.resume.file_size)}</p>
+                  {application.resume.is_primary && <span className="ws-badge mt-2">Primary resume</span>}
+                </section>
+                <section className="ws-card p-4 sm:p-5">
+                  <h2 className="ws-heading">Application dates</h2>
+                  <dl className="mt-3 grid gap-3 text-sm">
+                    <div><dt className="ws-muted text-xs">Submitted</dt><dd><time dateTime={application.applied_at}>{formatDate(application.applied_at)}</time></dd></div>
+                    <div><dt className="ws-muted text-xs">Last updated</dt><dd><time dateTime={application.updated_at}>{formatDate(application.updated_at)}</time></dd></div>
+                    {application.withdrawn_at && <div><dt className="ws-muted text-xs">Withdrawn</dt><dd><time dateTime={application.withdrawn_at}>{formatDate(application.withdrawn_at)}</time></dd></div>}
+                  </dl>
+                </section>
+              </div>
+            </div>
+          </article>
+        )}
     </main>
   );
 }

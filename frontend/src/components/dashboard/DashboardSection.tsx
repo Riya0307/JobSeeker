@@ -1,19 +1,22 @@
 import type { ReactNode } from "react";
 import { Link } from "react-router-dom";
+import WorkspaceIcon from "../WorkspaceIcon";
 
-interface DashboardSectionProps {
+export default function DashboardSection({ title, actionLabel, actionPath, children }: {
   title: string;
   actionLabel: string;
   actionPath: string;
   children: ReactNode;
-  className?: string;
-}
-
-export default function DashboardSection({ title, actionLabel, actionPath, children, className = "" }: DashboardSectionProps) {
+}) {
   return (
-    <section className={`rounded-2xl border border-white/10 bg-slate-900/60 p-5 sm:p-6 ${className}`}>
-      <div className="flex items-center justify-between gap-4"><h2 className="text-lg font-semibold">{title}</h2><Link to={actionPath} className="shrink-0 text-sm font-semibold text-cyan-300 hover:text-cyan-200">{actionLabel} →</Link></div>
-      <div className="mt-5">{children}</div>
+    <section className="ws-card p-4 sm:p-5">
+      <header className="mb-3 flex flex-wrap items-center justify-between gap-x-4 gap-y-1">
+        <h2 className="ws-heading">{title}</h2>
+        <Link to={actionPath} className="ws-link inline-flex min-h-10 items-center gap-1 text-sm">
+          {actionLabel}<WorkspaceIcon name="arrow" size={15} />
+        </Link>
+      </header>
+      {children}
     </section>
   );
 }

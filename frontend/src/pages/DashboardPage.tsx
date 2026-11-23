@@ -1,101 +1,170 @@
-import { useEffect, useState } from "react";
+import { useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import ActivityCard from "../components/dashboard/ActivityCard";
 import DashboardSection from "../components/dashboard/DashboardSection";
+import { EmptyState, RowsSkeleton, SectionError } from "../components/dashboard/DashboardStates";
 import ProfileCompletion from "../components/dashboard/ProfileCompletion";
-import * as applicationsApi from "../features/applications/api";
-import { applicationStatusClass, applicationStatusLabel } from "../features/applications/format";
-import type { PaginatedApplications } from "../features/applications/types";
+import { useDashboardData } from "../components/dashboard/useDashboardData";
+import WorkspaceIcon from "../components/WorkspaceIcon";
+import { applicationStatusLabel } from "../features/applications/format";
+import type { ApplicationStatus } from "../features/applications/types";
 import { useAuth } from "../features/auth/AuthContext";
 import { getApiError } from "../features/auth/formUtils";
-import * as interviewsApi from "../features/interviews/api";
-import { formatInterviewDateTime, interviewModeLabel, interviewStatusClass, interviewStatusLabel } from "../features/interviews/format";
-import type { PaginatedInterviews } from "../features/interviews/types";
+import { formatInterviewDateTime, interviewModeLabel } from "../features/interviews/format";
 import * as jobsApi from "../features/jobs/api";
-import JobCard from "../features/jobs/JobCard";
-import { formatDate } from "../features/jobs/format";
-import type { Job, PaginatedJobs } from "../features/jobs/types";
-import * as matchingApi from "../features/matching/api";
-import MatchScore from "../features/matching/MatchScore";
-import type { PaginatedJobMatches } from "../features/matching/types";
-import * as profileApi from "../features/profile/api";
-import type { CandidateProfile } from "../features/profile/types";
-import * as resumesApi from "../features/resumes/api";
+import { formatDate, titleCase } from "../features/jobs/format";
+import type { Job } from "../features/jobs/types";
 
-interface LoadState<T> { data: T | null; loading: boolean; error: string }
-const initialState = <T,>(): LoadState<T> => ({ data: null, loading: true, error: "" });
+const statusTones: Partial<Record<ApplicationStatus, string>> = {
+  under_review: "warning", shortlisted: "success", interview: "success",
+  rejected: "error", withdrawn: "error",
+};
 
-function SectionError({ message, onRetry }: { message: string; onRetry: () => void }) {
-  return <div role="alert" className="rounded-xl border border-red-400/20 bg-red-400/10 p-4 text-sm text-red-200"><p>{message}</p><button onClick={onRetry} className="mt-3 font-semibold text-cyan-300">Try again</button></div>;
-}
-
-function RowsSkeleton({ rows = 3 }: { rows?: number }) {
-  return <div className="space-y-3" aria-label="Loading section">{Array.from({ length: rows }, (_, index) => <div key={index} className="h-20 animate-pulse rounded-xl bg-white/5" />)}</div>;
-}
-
-const quickActions = [
-  ["Browse jobs", "/jobs"], ["Find matching jobs", "/matching"],
-  ["View applications", "/applications"], ["View interviews", "/interviews"],
-  ["Manage resumes", "/resumes"], ["Edit profile", "/profile"],
-] as const;
+const interviewDate = new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric" });
 
 export default function DashboardPage() {
   const { user } = useAuth();
-  const [profile, setProfile] = useState<LoadState<CandidateProfile>>(initialState);
-  const [resumeCount, setResumeCount] = useState<LoadState<number>>(initialState);
-  const [applications, setApplications] = useState<LoadState<PaginatedApplications>>(initialState);
-  const [interviews, setInterviews] = useState<LoadState<PaginatedInterviews>>(initialState);
-  const [savedJobs, setSavedJobs] = useState<LoadState<PaginatedJobs>>(initialState);
-  const [matches, setMatches] = useState<LoadState<PaginatedJobMatches>>(initialState);
-  const [profileRetry, setProfileRetry] = useState(0);
-  const [resumeRetry, setResumeRetry] = useState(0);
-  const [applicationRetry, setApplicationRetry] = useState(0);
-  const [interviewRetry, setInterviewRetry] = useState(0);
-  const [savedRetry, setSavedRetry] = useState(0);
-  const [matchRetry, setMatchRetry] = useState(0);
+  const { profile, resumes, applications, interviews, savedJobs, matches } = useDashboardData();
   const [savingJobId, setSavingJobId] = useState<number | null>(null);
+  const saving = useRef(false);
+  const [saveError, setSaveError] = useState("");
 
-  useEffect(() => { let active = true; setProfile((state) => ({ ...state, loading: true, error: "" })); profileApi.getProfile().then((data) => { if (active) setProfile({ data, loading: false, error: "" }); }).catch((reason) => { if (active) setProfile({ data: null, loading: false, error: getApiError(reason) }); }); return () => { active = false; }; }, [profileRetry]);
-  useEffect(() => { let active = true; setResumeCount((state) => ({ ...state, loading: true, error: "" })); resumesApi.listResumes().then((data) => { if (active) setResumeCount({ data: data.length, loading: false, error: "" }); }).catch((reason) => { if (active) setResumeCount({ data: null, loading: false, error: getApiError(reason) }); }); return () => { active = false; }; }, [resumeRetry]);
-  useEffect(() => { let active = true; setApplications((state) => ({ ...state, loading: true, error: "" })); applicationsApi.listApplications(1, 5).then((data) => { if (active) setApplications({ data, loading: false, error: "" }); }).catch((reason) => { if (active) setApplications({ data: null, loading: false, error: getApiError(reason) }); }); return () => { active = false; }; }, [applicationRetry]);
-  useEffect(() => { let active = true; setInterviews((state) => ({ ...state, loading: true, error: "" })); interviewsApi.listInterviews({ upcoming: true, status: "scheduled", pageSize: 3 }).then((data) => { if (active) setInterviews({ data, loading: false, error: "" }); }).catch((reason) => { if (active) setInterviews({ data: null, loading: false, error: getApiError(reason) }); }); return () => { active = false; }; }, [interviewRetry]);
-  useEffect(() => { let active = true; setSavedJobs((state) => ({ ...state, loading: true, error: "" })); jobsApi.listSavedJobs(1, 1).then((data) => { if (active) setSavedJobs({ data, loading: false, error: "" }); }).catch((reason) => { if (active) setSavedJobs({ data: null, loading: false, error: getApiError(reason) }); }); return () => { active = false; }; }, [savedRetry]);
-  useEffect(() => { let active = true; setMatches((state) => ({ ...state, loading: true, error: "" })); matchingApi.listJobMatches(1, 3).then((data) => { if (active) setMatches({ data, loading: false, error: "" }); }).catch((reason) => { if (active) setMatches({ data: null, loading: false, error: getApiError(reason) }); }); return () => { active = false; }; }, [matchRetry]);
-
-  async function toggleMatchSave(job: Job) {
+  async function toggleSave(job: Job) {
+    if (saving.current) return;
+    saving.current = true;
     setSavingJobId(job.id);
+    setSaveError("");
     try {
-      if (job.is_saved) await jobsApi.unsaveJob(job.id); else await jobsApi.saveJob(job.id);
-      setMatches((state) => state.data ? { ...state, data: { ...state.data, results: state.data.results.map((match) => match.job.id === job.id ? { ...match, job: { ...match.job, is_saved: !job.is_saved } } : match) } } : state);
-      setSavedJobs((state) => state.data ? { ...state, data: { ...state.data, count: Math.max(0, state.data.count + (job.is_saved ? -1 : 1)) } } : state);
-    } catch (reason) { setMatches((state) => ({ ...state, error: getApiError(reason) })); }
-    finally { setSavingJobId(null); }
+      if (job.is_saved) await jobsApi.unsaveJob(job.id);
+      else await jobsApi.saveJob(job.id);
+      matches.setData((result) => result && ({
+        ...result,
+        results: result.results.map((match) => match.job.id === job.id
+          ? { ...match, job: { ...match.job, is_saved: !job.is_saved } }
+          : match),
+      }));
+      savedJobs.retry();
+    } catch (error) {
+      setSaveError(getApiError(error));
+    } finally {
+      saving.current = false;
+      setSavingJobId(null);
+    }
   }
 
   if (!user) return null;
-  const displayName = [user.first_name, user.last_name].filter(Boolean).join(" ") || user.email;
-  return (
-    <main className="mx-auto max-w-6xl px-4 py-10 sm:px-6">
-      <header><p className="text-xs font-semibold uppercase tracking-[0.2em] text-cyan-400">Candidate command center</p><h1 className="mt-3 text-3xl font-semibold tracking-tight sm:text-4xl">Welcome back, {displayName}.</h1>{profile.data ? <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-sm text-slate-400"><span>{profile.data.headline || profile.data.current_job_title || "Job seeker"}</span>{profile.data.current_company && <span>{profile.data.current_company}</span>}{profile.data.location && <span>{profile.data.location}</span>}</div> : profile.loading ? <div className="mt-3 h-5 w-72 animate-pulse rounded bg-white/5" /> : <button onClick={() => setProfileRetry((value) => value + 1)} className="mt-3 text-sm text-red-200">Candidate summary unavailable · Retry</button>}</header>
+  const name = [user.first_name.trim(), user.last_name.trim()].filter(Boolean).join(" ");
+  const upcoming = interviews.data?.results.filter((interview) => Date.parse(interview.scheduled_at) >= Date.now());
 
-      <section className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-4" aria-label="Key activity">
-        <ActivityCard label="Applications" value={applications.data?.count ?? null} path="/applications" error={Boolean(applications.error)} onRetry={() => setApplicationRetry((value) => value + 1)} />
-        <ActivityCard label="Upcoming interviews" value={interviews.data?.count ?? null} path="/interviews" error={Boolean(interviews.error)} onRetry={() => setInterviewRetry((value) => value + 1)} />
-        <ActivityCard label="Saved jobs" value={savedJobs.data?.count ?? null} path="/saved-jobs" error={Boolean(savedJobs.error)} onRetry={() => setSavedRetry((value) => value + 1)} />
-        <ActivityCard label="Recommended jobs" value={matches.data?.count ?? null} path="/matching" error={Boolean(matches.error)} onRetry={() => setMatchRetry((value) => value + 1)} />
+  return (
+    <main className="ws-page">
+      <section className="ws-card ws-welcome grid gap-5 p-5 sm:p-6 xl:grid-cols-[minmax(0,1fr)_minmax(17rem,0.58fr)] xl:items-center">
+        <div className="min-w-0">
+          <h1 className="ws-title wrap-anywhere">{name ? `Welcome back, ${name}` : "Welcome back"}</h1>
+          <p className="ws-muted mt-2 text-sm sm:text-base">Find your next role and keep track of your progress.</p>
+          {profile.data?.headline && <p className="ws-muted mt-1 break-words text-sm">{profile.data.headline}</p>}
+          <Link to="/jobs" className="ws-button ws-button-primary mt-4"><WorkspaceIcon name="search" size={17} /> Find jobs</Link>
+        </div>
+        <div className="ws-card p-3.5 sm:p-4">
+          {profile.loading || resumes.loading ? <RowsSkeleton rows={1} label="Loading profile completion" /> :
+            profile.error ? <SectionError message={profile.error} onRetry={profile.retry} /> :
+            resumes.error ? <SectionError message={resumes.error} onRetry={resumes.retry} /> :
+            profile.data && resumes.data !== null && <ProfileCompletion user={user} profile={profile.data} resumeCount={resumes.data} />}
+        </div>
       </section>
 
-      <div className="mt-6 grid gap-6 lg:grid-cols-2">
-        <DashboardSection title="Upcoming interviews" actionLabel="View all interviews" actionPath="/interviews">{interviews.loading ? <RowsSkeleton /> : interviews.error ? <SectionError message={interviews.error} onRetry={() => setInterviewRetry((value) => value + 1)} /> : interviews.data?.results.length ? <ul className="space-y-3">{interviews.data.results.map((interview) => <li key={interview.id}><Link to={`/interviews/${interview.id}`} className="block rounded-xl bg-white/5 p-4 transition hover:bg-white/10"><div className="flex items-start justify-between gap-3"><div><p className="font-semibold text-slate-100">{interview.round_name}</p><p className="mt-1 text-sm text-cyan-300">{interview.application.job.title} · {interview.application.job.company_name}</p></div><span className={`shrink-0 rounded-full border px-2 py-1 text-xs ${interviewStatusClass(interview.status)}`}>{interviewStatusLabel(interview.status)}</span></div><p className="mt-3 text-sm text-slate-400">{formatInterviewDateTime(interview.scheduled_at)} · {interviewModeLabel(interview.mode)}</p></Link></li>)}</ul> : <div className="rounded-xl border border-dashed border-slate-700 p-7 text-center"><p className="font-medium">No upcoming interviews</p><p className="mt-2 text-sm text-slate-400">Keep applying to relevant opportunities.</p></div>}</DashboardSection>
+      <section className="mt-6" aria-labelledby="career-overview">
+        <h2 id="career-overview" className="ws-heading mb-3">Career overview</h2>
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 sm:gap-4">
+          <ActivityCard label="Applications" icon="briefcase" value={applications.data?.count ?? null} path="/applications" error={applications.error} onRetry={applications.retry} />
+          <ActivityCard label="Upcoming interviews" icon="calendar" value={interviews.data?.count ?? null} path="/interviews?upcoming=true" error={interviews.error} onRetry={interviews.retry} />
+          <ActivityCard label="Saved jobs" icon="bookmark" value={savedJobs.data?.count ?? null} path="/saved-jobs" error={savedJobs.error} onRetry={savedJobs.retry} />
+          <ActivityCard label="Recommended jobs" icon="spark" value={matches.data?.count ?? null} path="/matching" error={matches.error} onRetry={matches.retry} />
+        </div>
+        {savedJobs.data?.count === 0 && !savedJobs.loading && !savedJobs.error && (
+          <p className="ws-muted mt-3 text-sm">No saved jobs yet. <Link to="/jobs" className="ws-link">Browse roles to save</Link>.</p>
+        )}
+      </section>
 
-        <DashboardSection title="Profile and resume" actionLabel="Edit profile" actionPath="/profile">{profile.loading ? <RowsSkeleton rows={2} /> : profile.error ? <SectionError message={profile.error} onRetry={() => setProfileRetry((value) => value + 1)} /> : profile.data && (resumeCount.loading ? <RowsSkeleton rows={2} /> : resumeCount.error ? <SectionError message={resumeCount.error} onRetry={() => setResumeRetry((value) => value + 1)} /> : <ProfileCompletion user={user} profile={profile.data} resumeCount={resumeCount.data} />)}</DashboardSection>
+      <div className="mt-6 grid items-start gap-5 xl:grid-cols-[minmax(0,1.45fr)_minmax(0,1fr)]">
+        <DashboardSection title="Recommended jobs" actionLabel="All recommendations" actionPath="/matching">
+          {matches.loading ? <RowsSkeleton label="Loading recommendations" /> :
+            matches.error ? <SectionError message={matches.error} onRetry={matches.retry} /> :
+            matches.data?.results.length ? (
+              <>
+                {saveError && <p role="alert" className="ws-alert mb-2">{saveError}</p>}
+                <ul>
+                  {matches.data.results.map((match) => {
+                    const { job } = match;
+                    return (
+                      <li key={job.id} className="ws-divider flex items-start gap-3 border-b py-3 last:border-0">
+                        <span className="ws-avatar grid size-10 shrink-0 place-items-center rounded-lg"><WorkspaceIcon name="briefcase" size={18} /></span>
+                        <div className="min-w-0 flex-1">
+                          <Link to={`/jobs/${job.id}`} state={{ fromMatching: true }} className="ws-link break-words text-sm">{job.title}</Link>
+                          <p className="mt-0.5 break-words text-sm">{job.company_name}</p>
+                          <p className="ws-muted mt-1 flex gap-1 break-words text-xs">
+                            <WorkspaceIcon name="pin" size={14} /><span>{job.location} · {titleCase(job.work_mode)}</span>
+                          </p>
+                          {match.reasons[0] && <p className="ws-muted mt-2 break-words text-xs leading-relaxed">{match.reasons[0]}</p>}
+                          <p className="ws-badge mt-2" data-tone="success">{match.match_score}% match</p>
+                        </div>
+                        <button type="button" className={`ws-icon-button ${job.is_saved ? "ws-avatar" : ""}`}
+                          aria-label={`Save ${job.title}`} aria-pressed={job.is_saved} disabled={savingJobId !== null}
+                          title={job.is_saved ? "Remove from saved jobs" : "Save job"}
+                          onClick={() => void toggleSave(job)}><WorkspaceIcon name="bookmark" size={18} /></button>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </>
+            ) : <EmptyState title="No recommendations yet"><Link to="/profile" className="ws-link">Update your profile and skills</Link> to improve your recommendations.</EmptyState>}
+        </DashboardSection>
 
-        <DashboardSection title="Recent applications" actionLabel="View all applications" actionPath="/applications">{applications.loading ? <RowsSkeleton /> : applications.error ? <SectionError message={applications.error} onRetry={() => setApplicationRetry((value) => value + 1)} /> : applications.data?.results.length ? <ul className="space-y-3">{applications.data.results.map((application) => <li key={application.id}><Link to={`/applications/${application.id}`} className="flex items-start justify-between gap-3 rounded-xl bg-white/5 p-4 transition hover:bg-white/10"><div className="min-w-0"><p className="truncate font-semibold">{application.job.title}</p><p className="mt-1 truncate text-sm text-cyan-300">{application.job.company_name}</p><p className="mt-2 text-xs text-slate-500">Applied {formatDate(application.applied_at)}</p></div><span className={`shrink-0 rounded-full border px-2 py-1 text-xs ${applicationStatusClass(application.status)}`}>{applicationStatusLabel(application.status)}</span></Link></li>)}</ul> : <div className="rounded-xl border border-dashed border-slate-700 p-7 text-center"><p className="font-medium">You haven't applied to any jobs yet</p><Link to="/jobs" className="mt-3 inline-block text-sm font-semibold text-cyan-300">Browse jobs →</Link></div>}</DashboardSection>
-
-        <DashboardSection title="Quick actions" actionLabel="Browse jobs" actionPath="/jobs"><div className="grid gap-3 sm:grid-cols-2">{quickActions.map(([label, path]) => <Link key={path} to={path} className="rounded-xl border border-slate-700 px-4 py-3 text-sm font-semibold text-slate-200 transition hover:border-cyan-400/40 hover:text-cyan-300">{label} →</Link>)}</div></DashboardSection>
+        <div className="grid min-w-0 gap-5">
+          <DashboardSection title="Upcoming interviews" actionLabel="All interviews" actionPath="/interviews?upcoming=true">
+            {interviews.loading ? <RowsSkeleton rows={2} label="Loading interviews" /> :
+              interviews.error ? <SectionError message={interviews.error} onRetry={interviews.retry} /> :
+              upcoming?.length ? (
+                <ul>
+                  {upcoming.map((interview) => (
+                    <li key={interview.id} className="ws-divider border-b last:border-0">
+                      <Link to={`/interviews/${interview.id}`} className="ws-row flex items-start gap-3 rounded-md px-1 py-3">
+                        <span aria-hidden="true" className="ws-badge shrink-0">{interviewDate.format(new Date(interview.scheduled_at))}</span>
+                        <div className="min-w-0 break-words text-sm">
+                          <p className="font-semibold">{interview.round_name}</p>
+                          <p className="ws-muted mt-0.5">{interview.application.job.title} · {interview.application.job.company_name}</p>
+                          <p className="ws-muted mt-1 text-xs">
+                            <time dateTime={interview.scheduled_at}>{formatInterviewDateTime(interview.scheduled_at)}</time> · {interviewModeLabel(interview.mode)}
+                          </p>
+                        </div>
+                      </Link>
+                    </li>
+                  ))}
+                </ul>
+              ) : <EmptyState title="No upcoming interviews">Scheduled interviews will appear here.</EmptyState>}
+          </DashboardSection>
+          <DashboardSection title="Recent applications" actionLabel="All applications" actionPath="/applications">
+            {applications.loading ? <RowsSkeleton label="Loading applications" /> :
+              applications.error ? <SectionError message={applications.error} onRetry={applications.retry} /> :
+              applications.data?.results.length ? (
+                <ul>
+                  {applications.data.results.map((application) => (
+                    <li key={application.id} className="ws-divider border-b last:border-0">
+                      <Link to={`/applications/${application.id}`} className="ws-row flex flex-wrap items-start justify-between gap-x-3 gap-y-1 rounded-md px-1 py-3">
+                        <div className="min-w-0 flex-[1_1_8rem] break-words text-sm">
+                          <p className="font-semibold">{application.job.title}</p>
+                          <p className="ws-muted mt-0.5">{application.job.company_name}</p>
+                          <p className="ws-muted mt-1 text-xs">Applied <time dateTime={application.applied_at}>{formatDate(application.applied_at)}</time></p>
+                        </div>
+                        <span className="ws-badge shrink-0" data-tone={statusTones[application.status]}>{applicationStatusLabel(application.status)}</span>
+                      </Link>
+                    </li>
+                  ))}
+                </ul>
+              ) : <EmptyState title="No applications yet"><Link to="/jobs" className="ws-link">Find jobs to apply for</Link>.</EmptyState>}
+          </DashboardSection>
+        </div>
       </div>
-
-      <DashboardSection title="Top recommended jobs" actionLabel="View all recommendations" actionPath="/matching" className="mt-6">{matches.loading ? <div className="grid gap-5 lg:grid-cols-3">{[1, 2, 3].map((item) => <div key={item} className="h-72 animate-pulse rounded-2xl bg-white/5" />)}</div> : matches.error ? <SectionError message={matches.error} onRetry={() => setMatchRetry((value) => value + 1)} /> : matches.data?.results.length ? <div className="grid gap-5 lg:grid-cols-3">{matches.data.results.map((match) => <JobCard key={match.job.id} job={match.job} busy={savingJobId === match.job.id} onToggleSave={(job) => void toggleMatchSave(job)} detailState={{ fromMatching: true }} headerExtra={<MatchScore score={match.match_score} compact />}><div className="mt-4 border-t border-white/10 pt-4"><p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Why this matches</p><p className="mt-2 text-sm text-slate-300">{match.reasons[0] ?? "Matching details are available on the recommendations page."}</p></div></JobCard>)}</div> : <div className="rounded-xl border border-dashed border-slate-700 p-8 text-center"><p className="font-medium">No recommended jobs are available right now</p><p className="mt-2 text-sm text-slate-400">Update your profile and skills, then check again later.</p><Link to="/profile" className="mt-4 inline-block text-sm font-semibold text-cyan-300">Update profile →</Link></div>}</DashboardSection>
     </main>
   );
 }

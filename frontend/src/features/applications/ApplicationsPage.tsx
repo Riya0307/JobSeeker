@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import axios from "axios";
 import { Link, useSearchParams } from "react-router-dom";
 import { getApiError } from "../auth/formUtils";
+import { EmptyState, RowsSkeleton, SectionError } from "../../components/dashboard/DashboardStates";
 import Pagination from "../jobs/Pagination";
 import * as applicationsApi from "./api";
 import ApplicationCard from "./ApplicationCard";
@@ -49,11 +50,32 @@ export default function ApplicationsPage() {
   }
 
   return (
-    <main className="mx-auto max-w-6xl px-4 py-10 sm:px-6">
-      <p className="text-xs font-semibold uppercase tracking-[0.2em] text-cyan-400">Application tracker</p><h1 className="mt-3 text-3xl font-semibold tracking-tight sm:text-4xl">Your applications</h1><p className="mt-2 text-slate-400">Review your submitted applications and their current status.</p>
-      {success && <div role="status" className="mt-6 rounded-xl border border-emerald-400/20 bg-emerald-400/10 px-4 py-3 text-sm text-emerald-200">{success}</div>}
-      {error && <div role="alert" className="mt-6 rounded-xl border border-red-400/20 bg-red-400/10 p-4 text-sm text-red-200"><p>We couldn't load or update your applications. {error}</p><button onClick={() => setRetry((value) => value + 1)} className="mt-3 rounded-lg border border-red-300/30 px-4 py-2 font-semibold hover:bg-red-300/10">Try again</button></div>}
-      <section className="mt-8" aria-live="polite">{loading ? <div className="grid gap-5" aria-label="Loading applications">{[1, 2, 3].map((item) => <div key={item} className="h-64 animate-pulse rounded-2xl bg-slate-900/70" />)}</div> : data?.results.length ? <><p className="mb-4 text-sm text-slate-400">{data.count} {data.count === 1 ? "application" : "applications"}</p><div className="grid gap-5">{data.results.map((application) => <ApplicationCard key={application.id} application={application} withdrawing={withdrawingId === application.id} onWithdraw={(item) => void withdraw(item)} />)}</div><Pagination page={page} count={data.count} ariaLabel="Application pages" onChange={(next) => { setParams(next > 1 ? { page: String(next) } : {}); window.scrollTo({ top: 0, behavior: "smooth" }); }} /></> : <div className="rounded-2xl border border-dashed border-slate-700 px-6 py-16 text-center"><h2 className="text-lg font-semibold">No applications yet</h2><p className="mt-2 text-sm text-slate-400">When you apply for a job, it will appear here.</p><Link to="/jobs" className="mt-6 inline-block rounded-xl bg-cyan-400 px-5 py-3 text-sm font-semibold text-slate-950 hover:bg-cyan-300">Browse jobs</Link></div>}</section>
+    <main className="ws-page">
+      <header>
+        <h1 className="ws-title">Your applications</h1>
+        <p className="ws-muted mt-2 text-sm sm:text-base">Track the roles you’ve applied for and review your submissions.</p>
+      </header>
+      {success && <p role="status" className="ws-notice mt-4">{success}</p>}
+      {error && <div className="mt-4"><SectionError message={error} onRetry={() => setRetry((value) => value + 1)} /></div>}
+      <section className="mt-5" aria-label="Application results">
+        {loading ? <div className="ws-card px-4"><RowsSkeleton label="Loading applications" /></div> : data && (
+          <>
+            <p role="status" className="ws-muted mb-3 text-sm">{data.count.toLocaleString()} {data.count === 1 ? "application" : "applications"}</p>
+            {data.results.length ? (
+              <>
+                <div className="grid gap-3">{data.results.map((application) => (
+                  <ApplicationCard key={application.id} application={application} withdrawing={withdrawingId === application.id}
+                    onWithdraw={(item) => void withdraw(item)} />
+                ))}</div>
+                <Pagination light page={page} count={data.count} ariaLabel="Application pages" onChange={(next) => {
+                  setParams(next > 1 ? { page: String(next) } : {});
+                  window.scrollTo(0, 0);
+                }} />
+              </>
+            ) : !error && <EmptyState title="No applications yet"><Link to="/jobs" className="ws-link">Find jobs to apply for</Link>.</EmptyState>}
+          </>
+        )}
+      </section>
     </main>
   );
 }

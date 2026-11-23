@@ -1,8 +1,11 @@
 import { useEffect, useState, type FormEvent } from "react";
-import { useSearchParams } from "react-router-dom";
+import { useLocation, useSearchParams } from "react-router-dom";
 import axios from "axios";
-import { getApiError, inputClass } from "../auth/formUtils";
+import { getApiError } from "../auth/formUtils";
 import * as jobsApi from "./api";
+import WorkspaceIcon from "../../components/WorkspaceIcon";
+import { JobListEmpty, JobListSkeleton, SectionError } from "./JobListState";
+import { titleCase } from "./format";
 import JobCard from "./JobCard";
 import Pagination from "./Pagination";
 import type { Job, PaginatedJobs } from "./types";
@@ -34,7 +37,7 @@ function normalizedJobParams(params: URLSearchParams) {
   const ordering = params.get("ordering")?.trim();
   if (ordering && orderings.has(ordering) && ordering !== "-posted_at") normalized.set("ordering", ordering);
   const page = params.get("page")?.trim();
-  if (page && /^\d+$/.test(page) && Number(page) > 1) normalized.set("page", String(Number(page)));
+  if (page && /^\d+$/.test(page) && Number.isSafeInteger(Number(page)) && Number(page) > 1) normalized.set("page", String(Number(page)));
   return normalized;
 }
 
@@ -53,6 +56,7 @@ function filtersFromParams(params: URLSearchParams): Filters {
 }
 
 export default function JobsPage() {
+  const location = useLocation();
   const [params, setParams] = useSearchParams();
   const query = params.toString();
   const normalizedParams = normalizedJobParams(new URLSearchParams(query));
@@ -65,8 +69,11 @@ export default function JobsPage() {
   const [validationError, setValidationError] = useState("");
   const [busyId, setBusyId] = useState<number | null>(null);
   const [retry, setRetry] = useState(0);
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  const [saveError, setSaveError] = useState("");
 
   useEffect(() => {
+    setValidationError("");
     setFilters(filtersFromParams(new URLSearchParams(normalizedQuery)));
     if (query !== normalizedQuery) setParams(new URLSearchParams(normalizedQuery), { replace: true });
   }, [normalizedQuery, query, setParams]);
@@ -86,16 +93,16 @@ export default function JobsPage() {
   }, [normalizedQuery, page, retry, setParams]);
 
   function update(key: keyof Filters, value: string) { setFilters((current) => ({ ...current, [key]: value })); setValidationError(""); }
-  function submit(event: FormEvent) {
+  function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const experienceMin = filters.experience_min.trim() ? Number(filters.experience_min) : null;
     const experienceMax = filters.experience_max.trim() ? Number(filters.experience_max) : null;
     const salaryMin = filters.salary_min.trim() ? Number(filters.salary_min) : null;
     const salaryMax = filters.salary_max.trim() ? Number(filters.salary_max) : null;
-    if ([experienceMin, experienceMax].some((value) => value !== null && (!Number.isInteger(value) || value < 0))) {
+    if ([experienceMin, experienceMax].some((value) => value !== null && (!Number.isSafeInteger(value) || value < 0))) {
       setValidationError("Experience values must be non-negative whole numbers."); return;
     }
-    if ([salaryMin, salaryMax].some((value) => value !== null && (!Number.isFinite(value) || value < 0))) {
+    if ([salaryMin, salaryMax].some((value) => value !== null && (!Number.isSafeInteger(Math.round(value * 100_000)) || value < 0))) {
       setValidationError("Salary values must be non-negative numbers."); return;
     }
     if (experienceMin !== null && experienceMax !== null && experienceMin > experienceMax) {
@@ -108,43 +115,136 @@ export default function JobsPage() {
     Object.entries(filters).forEach(([key, value]) => {
       const clean = value.trim();
       if (!clean || (key === "ordering" && clean === "-posted_at")) return;
-      next.set(key, key.startsWith("salary_") ? String(Number(clean) * 100_000) : clean);
+      next.set(key, key.startsWith("salary_") ? String(Math.round(Number(clean) * 100_000)) : clean);
     });
-    setValidationError(""); setParams(next);
+    setValidationError(""); setFiltersOpen(false); setParams(next);
   }
-  function clearFilters() { setValidationError(""); setParams(new URLSearchParams()); }
-  function goToPage(page: number) { const next = new URLSearchParams(params); next.set("page", String(page)); setParams(next); window.scrollTo({ top: 0, behavior: "smooth" }); }
+  function clearFilters() {
+    const empty = new URLSearchParams();
+    setValidationError(""); setFilters(filtersFromParams(empty)); setParams(empty);
+  }
+  function goToPage(page: number) { const next = new URLSearchParams(params); if (page > 1) next.set("page", String(page)); else next.delete("page"); setParams(next); window.scrollTo({ top: 0, behavior: "smooth" }); }
   async function toggleSave(job: Job) {
-    setBusyId(job.id); setError("");
+    if (busyId !== null) return;
+    setBusyId(job.id); setSaveError("");
     try {
       if (job.is_saved) await jobsApi.unsaveJob(job.id); else await jobsApi.saveJob(job.id);
       setData((current) => current ? { ...current, results: current.results.map((item) => item.id === job.id ? { ...item, is_saved: !job.is_saved } : item) } : current);
-    } catch (reason) { setError(getApiError(reason)); } finally { setBusyId(null); }
+    } catch (reason) { setSaveError(getApiError(reason)); } finally { setBusyId(null); }
   }
 
+  const applied = filtersFromParams(normalizedParams);
+  const appliedFilters = [
+    applied.location && `Location: ${applied.location}`,
+    applied.work_mode && titleCase(applied.work_mode),
+    applied.employment_type && titleCase(applied.employment_type),
+    applied.skills && `Skills: ${applied.skills}`,
+    applied.experience_min && `Min. experience: ${applied.experience_min} yr`,
+    applied.experience_max && `Max. experience: ${applied.experience_max} yr`,
+    applied.salary_min && `Min. salary: ${applied.salary_min} LPA`,
+    applied.salary_max && `Max. salary: ${applied.salary_max} LPA`,
+  ].filter(Boolean);
+  const orderingOptions = [
+    ["-posted_at", "Newest first"], ["posted_at", "Oldest first"], ["-salary_min", "Highest salary"],
+    ["salary_min", "Lowest salary"], ["title", "Job title A–Z"], ["company_name", "Company A–Z"],
+  ];
+  const fieldClass = "ws-control mt-1 text-sm";
+
   return (
-    <main className="mx-auto max-w-6xl px-4 py-10 sm:px-6">
-      <div><p className="text-xs font-semibold uppercase tracking-[0.2em] text-cyan-400">Job discovery</p><h1 className="mt-3 text-3xl font-semibold tracking-tight sm:text-4xl">Find your next opportunity</h1><p className="mt-2 text-slate-400">Search active roles and save the ones worth revisiting.</p></div>
-      <form onSubmit={submit} className="mt-8 rounded-2xl border border-white/10 bg-slate-900/60 p-5 sm:p-6">
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-          <label className="text-sm text-slate-300 lg:col-span-2">Keyword<input className={inputClass} placeholder="Title, company, skill..." value={filters.search} onChange={(e) => update("search", e.target.value)} /></label>
-          <label className="text-sm text-slate-300 lg:col-span-2">Location<input className={inputClass} placeholder="Delhi, Bengaluru..." value={filters.location} onChange={(e) => update("location", e.target.value)} /></label>
-          <label className="text-sm text-slate-300">Work mode<select className={inputClass} value={filters.work_mode} onChange={(e) => update("work_mode", e.target.value)}><option value="">Any mode</option><option value="remote">Remote</option><option value="hybrid">Hybrid</option><option value="onsite">On-site</option></select></label>
-          <label className="text-sm text-slate-300">Employment type<select className={inputClass} value={filters.employment_type} onChange={(e) => update("employment_type", e.target.value)}><option value="">Any type</option><option value="full-time">Full-time</option><option value="part-time">Part-time</option><option value="contract">Contract</option><option value="internship">Internship</option><option value="temporary">Temporary</option></select></label>
-          <label className="text-sm text-slate-300">Min experience<input type="number" min="0" className={inputClass} placeholder="Years" value={filters.experience_min} onChange={(e) => update("experience_min", e.target.value)} /></label>
-          <label className="text-sm text-slate-300">Max experience<input type="number" min="0" className={inputClass} placeholder="Years" value={filters.experience_max} onChange={(e) => update("experience_max", e.target.value)} /></label>
-          <label className="text-sm text-slate-300">Min salary<input type="number" min="0" step="0.1" className={inputClass} placeholder="LPA" value={filters.salary_min} onChange={(e) => update("salary_min", e.target.value)} /></label>
-          <label className="text-sm text-slate-300">Max salary<input type="number" min="0" step="0.1" className={inputClass} placeholder="LPA" value={filters.salary_max} onChange={(e) => update("salary_max", e.target.value)} /></label>
-          <label className="text-sm text-slate-300 lg:col-span-2">Skills<input className={inputClass} placeholder="Python, Django, SQL" value={filters.skills} onChange={(e) => update("skills", e.target.value)} /><span className="mt-1 block text-xs text-slate-500">Separate multiple skills with commas.</span></label>
-          <label className="text-sm text-slate-300 lg:col-span-2">Sort by<select className={inputClass} value={filters.ordering} onChange={(e) => update("ordering", e.target.value)}><option value="-posted_at">Newest first</option><option value="posted_at">Oldest first</option><option value="-salary_min">Highest salary</option><option value="salary_min">Lowest salary</option><option value="title">Job title A–Z</option><option value="company_name">Company A–Z</option></select></label>
-        </div>
-        <div className="mt-5 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end"><button type="button" onClick={clearFilters} className="rounded-xl border border-slate-700 px-5 py-3 text-sm font-semibold text-slate-300 hover:border-slate-500">Clear filters</button><button className="rounded-xl bg-cyan-400 px-6 py-3 text-sm font-semibold text-slate-950 hover:bg-cyan-300">Search jobs</button></div>
+    <main className="ws-page">
+      <header>
+        <h1 className="ws-title">Find jobs</h1>
+        <p className="ws-muted mt-2 text-sm sm:text-base">Search active roles and save opportunities to revisit.</p>
+      </header>
+      <form id="job-search" onSubmit={submit} className="ws-card mt-5 flex flex-wrap items-end gap-3 p-4">
+        <label className="min-w-0 flex-[1_1_12rem] text-sm font-semibold">Keyword
+          <input className={fieldClass} type="search" placeholder="Job title, company, or skill" value={filters.search} onChange={(e) => update("search", e.target.value)} />
+        </label>
+        <button type="submit" className="ws-button ws-button-primary"><WorkspaceIcon name="search" size={17} /> Search</button>
+        <button type="button" className="ws-button xl:hidden" aria-controls="job-filters" aria-expanded={filtersOpen}
+          onClick={() => setFiltersOpen((open) => !open)}>
+          Filters{appliedFilters.length > 0 && ` (${appliedFilters.length})`} <WorkspaceIcon name="chevron" size={15} />
+        </button>
       </form>
-      {validationError && <div role="alert" className="mt-6 rounded-xl border border-amber-400/20 bg-amber-400/10 px-4 py-3 text-sm text-amber-100">{validationError}</div>}
-      {error && <div role="alert" className="mt-6 rounded-xl border border-red-400/20 bg-red-400/10 px-4 py-3 text-sm text-red-200"><p>{error}</p><button type="button" onClick={() => setRetry((value) => value + 1)} className="mt-3 font-semibold text-cyan-300">Try again</button></div>}
-      <section className="mt-8" aria-live="polite">
-        {loading ? <div className="grid gap-5"><div className="h-56 animate-pulse rounded-2xl bg-slate-900/70" /><div className="h-56 animate-pulse rounded-2xl bg-slate-900/70" /></div> : data?.results.length ? <><p className="mb-4 text-sm text-slate-400">{data.count} {data.count === 1 ? "job" : "jobs"} found</p><div className="grid gap-5">{data.results.map((job) => <JobCard key={job.id} job={job} busy={busyId === job.id} onToggleSave={(item) => void toggleSave(item)} />)}</div><Pagination page={page} count={data.count} onChange={goToPage} /></> : <div className="rounded-2xl border border-dashed border-slate-700 px-6 py-16 text-center"><h2 className="text-lg font-semibold">No jobs found</h2><p className="mt-2 text-sm text-slate-400">Try broadening your search or clearing some filters.</p><button onClick={clearFilters} className="mt-5 text-sm font-semibold text-cyan-300 hover:text-cyan-200">Clear all filters</button></div>}
-      </section>
+      {validationError && <div role="alert" className="ws-alert mt-3">{validationError}</div>}
+      <div className="mt-5 grid items-start gap-5 xl:grid-cols-[16.5rem_minmax(0,1fr)]">
+        <aside id="job-filters" aria-labelledby="job-filters-heading" className={`ws-card space-y-4 p-4 xl:block ${filtersOpen ? "block" : "hidden"}`}>
+          <div className="flex items-center justify-between gap-2">
+            <h2 id="job-filters-heading" className="ws-heading">Filters</h2>
+            <button type="button" onClick={clearFilters} className="ws-link min-h-11 text-sm">Clear all</button>
+          </div>
+          <label className="block text-sm font-semibold">Location
+            <input form="job-search" className={fieldClass} placeholder="City or region" value={filters.location} onChange={(e) => update("location", e.target.value)} />
+          </label>
+          <label className="block text-sm font-semibold">Work mode
+            <select form="job-search" className={fieldClass} value={filters.work_mode} onChange={(e) => update("work_mode", e.target.value)}>
+              <option value="">Any mode</option><option value="remote">Remote</option><option value="hybrid">Hybrid</option><option value="onsite">On-site</option>
+            </select>
+          </label>
+          <label className="block text-sm font-semibold">Employment type
+            <select form="job-search" className={fieldClass} value={filters.employment_type} onChange={(e) => update("employment_type", e.target.value)}>
+              <option value="">Any type</option><option value="full-time">Full-time</option><option value="part-time">Part-time</option><option value="contract">Contract</option><option value="internship">Internship</option><option value="temporary">Temporary</option>
+            </select>
+          </label>
+          {([["experience", "Experience (years)", 1], ["salary", "Salary (LPA)", 0.1]] as const).map(([key, label, step]) => (
+            <fieldset key={key} className="grid grid-cols-2 gap-2">
+              <legend className="mb-1 text-sm font-semibold">{label}</legend>
+              {(["min", "max"] as const).map((bound) => (
+                <label key={bound} className="ws-muted min-w-0 text-xs">
+                  {bound === "min" ? "Minimum" : "Maximum"}
+                  <input form="job-search" className={fieldClass} type="number" min="0" step={step}
+                    value={filters[`${key}_${bound}`]} onChange={(e) => update(`${key}_${bound}`, e.target.value)} />
+                </label>
+              ))}
+            </fieldset>
+          ))}
+          <label className="block text-sm font-semibold">Skills
+            <input form="job-search" className={fieldClass} placeholder="Python, SQL" value={filters.skills} onChange={(e) => update("skills", e.target.value)} />
+            <span className="ws-muted mt-1 block text-xs font-normal">Separate skills with commas.</span>
+          </label>
+          <label className="block text-sm font-semibold">Sort by
+            <select form="job-search" className={fieldClass} value={filters.ordering} onChange={(e) => update("ordering", e.target.value)}>
+              {orderingOptions.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+            </select>
+          </label>
+          <button type="submit" form="job-search" className="ws-button ws-button-primary w-full">Apply filters</button>
+        </aside>
+
+        <section aria-label="Job results" className="min-w-0">
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+            <p role="status" className="ws-muted text-sm">
+              {loading ? "Loading jobs…" : error ? "Job results unavailable" : data && `${data.count.toLocaleString()} ${data.count === 1 ? "job" : "jobs"} found`}
+            </p>
+            {applied.ordering !== "-posted_at" && (
+              <p className="ws-muted text-sm">{orderingOptions.find(([value]) => value === applied.ordering)?.[1]}</p>
+            )}
+          </div>
+          {(applied.search || appliedFilters.length > 0) && (
+            <div className="mb-4 flex flex-wrap items-center gap-2" aria-label="Applied filters">
+              {applied.search && <span className="ws-badge max-w-full wrap-anywhere">Keyword: {applied.search}</span>}
+              {appliedFilters.map((filter) => <span key={filter} className="ws-badge max-w-full wrap-anywhere">{filter}</span>)}
+              <button type="button" className="ws-link min-h-10 text-sm" onClick={clearFilters}>Clear all</button>
+            </div>
+          )}
+          {saveError && <p role="alert" className="ws-alert mb-3">{saveError}</p>}
+          {loading ? <JobListSkeleton label="Loading jobs" /> :
+            error ? <SectionError message={error} onRetry={() => setRetry((value) => value + 1)} /> :
+            data?.results.length ? (
+              <>
+                <div className="grid gap-3">
+                  {data.results.map((job) => <JobCard key={job.id} job={job} disabled={busyId !== null}
+                    detailState={{ returnTo: location.pathname + location.search }}
+                    onToggleSave={(item) => void toggleSave(item)} />)}
+                </div>
+                <Pagination light page={page} count={data.count} onChange={goToPage} />
+              </>
+            ) : (
+              <JobListEmpty title="No jobs found">
+                Try a different keyword or <button type="button" className="ws-link" onClick={clearFilters}>clear your filters</button>.
+              </JobListEmpty>
+            )}
+        </section>
+      </div>
     </main>
   );
 }

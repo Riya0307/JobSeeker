@@ -1,0 +1,146 @@
+@layer components {
+  .workspace {
+    --ws-canvas: #f6f7fb;
+    --ws-surface: #fff;
+    --ws-text: #192237;
+    --ws-muted: #566279;
+    --ws-border: #e2e6ef;
+    --ws-accent: #4338ca;
+    --ws-accent-hover: #3528ad;
+    --ws-accent-soft: #eeedff;
+    --ws-green: #146447;
+    --ws-green-soft: #eaf7ef;
+    --ws-amber: #85520c;
+    --ws-amber-soft: #fff4df;
+    --ws-red: #a42738;
+    --ws-red-soft: #fff0f2;
+    --ws-radius: .75rem;
+    --ws-shadow: 0 1px 2px #17213a08;
+    --ws-float: 0 12px 32px #17213a20;
+    --ws-inset: clamp(1rem, 3vw, 2.5rem);
+    --ws-width: 80rem;
+    background: var(--ws-canvas);
+    color: var(--ws-text);
+  }
+  .workspace :focus-visible { outline: 2px solid #7667ed; outline-offset: 3px; }
+  .workspace ::selection { background: #dcd8ff; color: var(--ws-text); }
+  .ws-muted { color: var(--ws-muted); }
+  .ws-page { max-width: var(--ws-width); margin-inline: auto; padding: 1.75rem var(--ws-inset) 3rem; }
+  .ws-title { font-size: clamp(1.6rem, 3vw, 2.25rem); font-weight: 700; letter-spacing: -.045em; line-height: 1.15; }
+  .ws-heading { font-size: 1.125rem; font-weight: 650; letter-spacing: -.02em; }
+  .ws-card, .ws-popover {
+    background: var(--ws-surface);
+    border: 1px solid var(--ws-border);
+    border-radius: var(--ws-radius);
+    box-shadow: var(--ws-shadow);
+    min-width: 0;
+  }
+  .ws-popover { box-shadow: var(--ws-float); }
+  .ws-button, .ws-icon-button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: .5rem;
+    min-height: 2.75rem;
+    border: 1px solid var(--ws-border);
+    border-radius: .5rem;
+    padding: .5rem .875rem;
+    background: var(--ws-surface);
+    font-size: .875rem;
+    font-weight: 600;
+    color: var(--ws-text);
+    transition: background-color .15s, border-color .15s, color .15s;
+  }
+  .ws-icon-button { width: 2.75rem; flex: none; padding: 0; }
+  .ws-button:hover, .ws-icon-button:hover, .ws-menu-item:hover { background: var(--ws-accent-soft); color: var(--ws-accent); }
+  .ws-button-primary { background: var(--ws-accent); border-color: var(--ws-accent); color: white; }
+  .ws-button-primary:hover { background: var(--ws-accent-hover); color: white; }
+  .ws-button:disabled, .ws-icon-button:disabled { opacity: .55; }
+  .ws-button-danger { color: var(--ws-red); }
+  .ws-button-danger:hover { background: var(--ws-red-soft); color: var(--ws-red); }
+  .ws-icon-button[aria-pressed="true"], .ws-icon-button[aria-pressed="true"]:hover {
+    border-color: var(--ws-accent);
+    background: var(--ws-accent-soft);
+    color: var(--ws-accent);
+  }
+  .ws-icon-button[aria-pressed="true"] svg { fill: currentColor; }
+  .ws-link { color: var(--ws-accent); font-weight: 650; }
+  .ws-link:hover { text-decoration: underline; text-underline-offset: .2em; }
+  .ws-control {
+    width: 100%;
+    min-height: 2.75rem;
+    padding: .55rem .75rem;
+    border: 1px solid var(--ws-border);
+    border-radius: .5rem;
+    background: var(--ws-surface);
+    color: var(--ws-text);
+  }
+  textarea.ws-control { min-height: 6rem; resize: vertical; }
+  .ws-control[aria-invalid="true"] { border-color: var(--ws-red); }
+  .ws-control:disabled { background: var(--ws-canvas); opacity: .65; }
+  .ws-tab { min-height: 2.75rem; padding: .5rem .75rem; border-bottom: 2px solid transparent; color: var(--ws-muted); }
+  .ws-tab:hover, .ws-tab[aria-selected="true"] { color: var(--ws-accent); }
+  .ws-tab[aria-selected="true"] { border-bottom-color: currentColor; }
+  .ws-badge {
+    display: inline-flex;
+    width: fit-content;
+    align-items: center;
+    gap: .3rem;
+    padding: .25rem .5rem;
+    border-radius: .375rem;
+    color: var(--ws-accent);
+    background: var(--ws-accent-soft);
+    font-size: .75rem;
+    font-weight: 650;
+  }
+  .ws-badge[data-tone="success"] { color: var(--ws-green); background: var(--ws-green-soft); }
+  .ws-badge[data-tone="warning"] { color: var(--ws-amber); background: var(--ws-amber-soft); }
+  .ws-badge[data-tone="neutral"] { color: var(--ws-muted); background: var(--ws-canvas); }
+  .ws-badge[data-tone="error"], .ws-alert { color: var(--ws-red); background: var(--ws-red-soft); }
+  .ws-alert, .ws-empty { padding: 1rem; border-radius: .5rem; font-size: .875rem; }
+  .ws-notice { padding: .75rem 1rem; border-radius: .5rem; background: var(--ws-green-soft); color: var(--ws-green); font-size: .875rem; }
+  .ws-empty { background: var(--ws-canvas); color: var(--ws-muted); }
+  .ws-skeleton { border-radius: .375rem; background: #e9ecf4; animation: ws-pulse 1.6s ease-in-out infinite; }
+  @keyframes ws-pulse { 50% { opacity: .5; } }
+  @media (prefers-reduced-motion: reduce) { .ws-skeleton { animation: none; } }
+  .ws-dialog {
+    max-height: calc(100dvh - 2rem);
+    max-width: calc(100vw - 2rem);
+    margin: auto;
+    overflow: auto;
+    color: var(--ws-text);
+    background: var(--ws-surface);
+    border-radius: var(--ws-radius);
+    box-shadow: var(--ws-float);
+  }
+  .ws-dialog::backdrop { background: #19223780; }
+  .ws-menu-item {
+    display: flex;
+    align-items: center;
+    gap: .625rem;
+    width: 100%;
+    min-height: 2.75rem;
+    padding: .5rem .625rem;
+    border-radius: .5rem;
+    text-align: start;
+    font-size: .875rem;
+    font-weight: 550;
+    color: var(--ws-muted);
+  }
+  .ws-menu-item[aria-current="page"] { background: var(--ws-accent-soft); color: var(--ws-accent); font-weight: 700; }
+  .ws-shell { --ws-sidebar: 14.5rem; --ws-header: 4.25rem; }
+  .ws-header { height: var(--ws-header); background: var(--ws-surface); border-bottom: 1px solid var(--ws-border); }
+  .ws-sidebar { background: var(--ws-surface); border-right: 1px solid var(--ws-border); }
+  .ws-brand-mark { background: var(--ws-accent); color: white; }
+  .ws-avatar { background: var(--ws-accent-soft); color: var(--ws-accent); }
+  .ws-drawer { margin: 0; height: 100dvh; max-height: none; width: min(19rem, 88vw); border-radius: 0; }
+  .ws-notification-panel { position: fixed; top: calc(var(--ws-header) + .5rem); right: 1rem; width: min(24rem, calc(100vw - 2rem)); }
+  @media (min-width: 48rem) {
+    .ws-notification-panel { position: absolute; top: calc(100% + .75rem); right: 0; }
+  }
+  .ws-divider { border-color: var(--ws-border); }
+  .ws-row:hover { background: var(--ws-canvas); }
+  .ws-welcome { background: #eeedff; border-color: #e3dfff; }
+  .ws-progress { height: .5rem; overflow: hidden; border-radius: 999px; background: #e6e5f3; }
+  .ws-progress > div { height: 100%; border-radius: inherit; background: var(--ws-accent); }
+}
