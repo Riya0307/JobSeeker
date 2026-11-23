@@ -1,16 +1,20 @@
 from django.db import transaction
 from django.utils import timezone
+from redis.exceptions import RedisError
 from rest_framework import status
 from rest_framework.exceptions import NotFound, ValidationError
 from rest_framework.generics import ListCreateAPIView, RetrieveUpdateAPIView
 from rest_framework.pagination import PageNumberPagination
 from rest_framework.response import Response
+from rest_framework.throttling import ScopedRateThrottle
 from rest_framework.views import APIView
 
+from apps.ai.gemini import GeminiRateLimited, GeminiUnavailable
 from apps.notifications.models import Notification
 from apps.notifications.services import create_interview_notification
 
 from .models import Interview
+from .preparation import get_or_generate_preparation
 from .serializers import InterviewReadSerializer, InterviewStatusSerializer, InterviewWriteSerializer
 
 
@@ -87,6 +91,55 @@ class InterviewDetailView(OwnedInterviewMixin, RetrieveUpdateAPIView):
         serializer.is_valid(raise_exception=True)
         interview = serializer.save()
         return Response(InterviewReadSerializer(interview, context=self.get_serializer_context()).data)
+
+
+class InterviewPreparationView(OwnedInterviewMixin, APIView):
+    throttle_classes = (ScopedRateThrottle,)
+    throttle_scope = "interview_preparation"
+
+    def handle_exception(self, exc):
+        if isinstance(exc, RedisError):
+            return self.temporarily_unavailable()
+        return super().handle_exception(exc)
+
+    def post(self, request, pk):
+        interview = self.get_queryset().filter(pk=pk).first()
+        if interview is None:
+            raise NotFound("Interview not found.")
+        if interview.status not in (Interview.Status.SCHEDULED, Interview.Status.RESCHEDULED):
+            return self.preparation_response(
+                "unavailable", status.HTTP_409_CONFLICT,
+                "Preparation is available for scheduled and rescheduled interviews.",
+            )
+        try:
+            preparation = get_or_generate_preparation(interview)
+        except GeminiRateLimited:
+            return self.preparation_response(
+                "unavailable", status.HTTP_429_TOO_MANY_REQUESTS,
+                "AI preparation is temporarily rate limited. Please try again later.",
+            )
+        except GeminiUnavailable:
+            return self.temporarily_unavailable()
+        if preparation is None:
+            return self.preparation_response(
+                "processing", status.HTTP_202_ACCEPTED,
+                "Preparation was requested recently. Please try again shortly.",
+            )
+        return self.preparation_response("generated", status.HTTP_200_OK, preparation=preparation)
+
+    def temporarily_unavailable(self):
+        return self.preparation_response(
+            "unavailable", status.HTTP_503_SERVICE_UNAVAILABLE,
+            "AI preparation is temporarily unavailable. Please try again later.",
+        )
+
+    @staticmethod
+    def preparation_response(result_status, http_status, detail="", preparation=None):
+        return Response(
+            {"status": result_status, "preparation": preparation, "detail": detail},
+            status=http_status,
+            headers={"Cache-Control": "no-store"},
+        )
 
 
 class InterviewStatusView(OwnedInterviewMixin, APIView):

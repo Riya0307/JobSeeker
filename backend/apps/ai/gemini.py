@@ -54,7 +54,7 @@ def generate_structured_json(prompt: str, response_schema: dict) -> dict:
         if exc.code == 429:
             raise GeminiRateLimited("Gemini is temporarily rate limited.") from exc
         raise GeminiUnavailable("Gemini is temporarily unavailable.") from exc
-    except (URLError, socket.timeout, TimeoutError, json.JSONDecodeError) as exc:
+    except (URLError, socket.timeout, TimeoutError, json.JSONDecodeError, UnicodeDecodeError) as exc:
         logger.warning("Gemini request failed: %s", type(exc).__name__)
         raise GeminiUnavailable("Gemini is temporarily unavailable.") from exc
     try:

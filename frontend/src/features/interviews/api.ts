@@ -1,5 +1,7 @@
 import apiClient from "../../api/client";
-import type { Interview, InterviewFilters, InterviewStatusAction, PaginatedInterviews } from "./types";
+import type {
+  Interview, InterviewFilters, InterviewPreparationResponse, InterviewStatusAction, PaginatedInterviews,
+} from "./types";
 
 export async function listInterviews(filters: InterviewFilters = {}): Promise<PaginatedInterviews> {
   const params = new URLSearchParams();
@@ -14,6 +16,11 @@ export async function listInterviews(filters: InterviewFilters = {}): Promise<Pa
 
 export async function getInterview(id: number): Promise<Interview> {
   const response = await apiClient.get<Interview>(`/interviews/${id}/`);
+  return response.data;
+}
+
+export async function prepareInterview(id: number): Promise<InterviewPreparationResponse> {
+  const response = await apiClient.post<InterviewPreparationResponse>(`/interviews/${id}/prepare/`);
   return response.data;
 }
 

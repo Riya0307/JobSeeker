@@ -120,6 +120,7 @@ REST_FRAMEWORK = {
     "DEFAULT_THROTTLE_RATES": {
         "matching_explanation": "10/hour",
         "cover_letter_generation": "5/hour",
+        "interview_preparation": "5/hour",
     },
 }
 

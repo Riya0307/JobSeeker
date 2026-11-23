@@ -3,6 +3,7 @@ import { Link, useParams } from "react-router-dom";
 import { getApiError, inputClass } from "../auth/formUtils";
 import { formatDate, titleCase } from "../jobs/format";
 import * as interviewsApi from "./api";
+import InterviewPreparationPanel from "./InterviewPreparationPanel";
 import { formatInterviewDate, formatInterviewDateTime, formatInterviewTime, interviewModeLabel, interviewStatusClass, interviewStatusLabel } from "./format";
 import type { Interview, InterviewStatusAction } from "./types";
 
@@ -70,6 +71,9 @@ export default function InterviewDetailPage() {
           <section className="border-t border-white/10 pt-7"><h2 className="text-lg font-semibold">Notes</h2>{interview.notes ? <p className="mt-3 whitespace-pre-wrap text-sm leading-7 text-slate-300">{interview.notes}</p> : <p className="mt-3 text-sm text-slate-500">No notes provided.</p>}</section>
           <section className="border-t border-white/10 pt-7"><h2 className="text-lg font-semibold">Application</h2><p className="mt-2 text-sm text-slate-400">Application reference #{interview.application.id}</p><div className="mt-4 flex flex-col gap-3 sm:flex-row"><Link to={`/applications/${interview.application.id}`} className="rounded-xl border border-slate-700 px-5 py-3 text-center text-sm font-semibold text-slate-200 hover:border-slate-500">View application</Link><Link to={`/jobs/${interview.application.job.id}`} className="rounded-xl border border-slate-700 px-5 py-3 text-center text-sm font-semibold text-slate-200 hover:border-slate-500">View job</Link></div></section>
           <p className="border-t border-white/10 pt-5 text-xs text-slate-500">Created {formatDate(interview.created_at)} · Updated {formatInterviewDateTime(interview.updated_at)}</p>
+          {interview.id === interviewId && ["scheduled", "rescheduled"].includes(interview.status) && (
+            <InterviewPreparationPanel key={`${interview.id}:${interview.updated_at}`} interviewId={interview.id} />
+          )}
         </div>
       </article>
       {rescheduleOpen && <div className="fixed inset-0 z-50 grid place-items-center bg-black/75 p-4" role="dialog" aria-modal="true" aria-labelledby="reschedule-title" onMouseDown={(event) => { if (event.target === event.currentTarget && action === null) setRescheduleOpen(false); }}><div className="w-full max-w-md rounded-2xl border border-white/10 bg-slate-900 p-6"><h2 id="reschedule-title" className="text-xl font-semibold">Reschedule interview</h2><p className="mt-2 text-sm text-slate-400">Choose a new date and time in your local timezone.</p>{rescheduleError && <p role="alert" className="mt-4 rounded-lg bg-red-400/10 px-3 py-2 text-sm text-red-200">{rescheduleError}</p>}<form onSubmit={(event) => void reschedule(event)} className="mt-5"><label className="text-sm text-slate-300">New date and time<input autoFocus required type="datetime-local" className={inputClass} value={rescheduleAt} onChange={(event) => setRescheduleAt(event.target.value)} /></label><div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end"><button type="button" disabled={action !== null} onClick={() => setRescheduleOpen(false)} className="rounded-xl border border-slate-700 px-5 py-3 text-sm font-semibold text-slate-300">Cancel</button><button disabled={action !== null} className="rounded-xl bg-cyan-400 px-5 py-3 text-sm font-semibold text-slate-950 disabled:opacity-50">{action === "rescheduled" ? "Rescheduling..." : "Confirm reschedule"}</button></div></form></div></div>}

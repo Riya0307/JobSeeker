@@ -38,3 +38,16 @@ export interface InterviewFilters {
   past?: boolean;
   status?: InterviewStatus;
 }
+export interface InterviewPreparation {
+  overview: string;
+  technical_topics: { topic: string; reason: string; priority: "high" | "medium" | "low" }[];
+  technical_questions: { question: string; what_interviewer_assesses: string; preparation_guidance: string }[];
+  behavioral_questions: { question: string; guidance: string }[];
+  profile_gaps: { area: string; guidance: string }[];
+  questions_to_ask: string[];
+  preparation_checklist: string[];
+}
+
+export type InterviewPreparationResponse =
+  | { status: "generated"; preparation: InterviewPreparation; detail: string }
+  | { status: "processing" | "unavailable"; preparation: null; detail: string };
